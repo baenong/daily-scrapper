@@ -1,3 +1,4 @@
+import qdarktheme
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -18,8 +19,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QRadioButton,
     QButtonGroup,
+    QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QDesktopServices, QColor, QBrush
 from datetime import datetime, timezone
 
@@ -27,27 +29,54 @@ from datetime import datetime, timezone
 from core import data_manager
 from core import news_scraper
 from core import law_scraper
+from core import startup_manager
 
 
 class StyledButton(QPushButton):
     """배경색과 글자색을 인자로 받아 예쁜 CSS 버튼을 만들어주는 클래스입니다."""
 
-    def __init__(self, text, bg_color, text_color="white"):
+    def __init__(self, text, bg_color_hex, text_color="white"):
         super().__init__(text)
+
+        self.setCursor(Qt.PointingHandCursor)
+
+        if bg_color_hex == "transparent":
+            normal_bg = "transparent"
+            hover_bg = "rgba(128, 128, 128, 0.15)"
+            pressed_bg = "rgba(128, 128, 128, 0.3)"
+            final_text_color = text_color if text_color else "black"
+
+        else:
+            base_color = QColor(bg_color_hex)
+            normal_bg = base_color.name()
+            hover_bg = base_color.lighter(115).name()
+            pressed_bg = base_color.darker(110).name()
+
+            if not text_color:
+                luminance = (
+                    base_color.red() * 0.299
+                    + base_color.green() * 0.587
+                    + base_color.blue() * 0.114
+                )
+
+                final_text_color = "#131313" if luminance > 150 else "#FFFFFF"
+            else:
+                final_text_color = text_color
+
         self.setStyleSheet(
             f"""
             QPushButton {{
-                background-color: {bg_color};
-                color: {text_color};
+                background-color: {normal_bg};
+                color: {final_text_color};
                 border: none;
                 border-radius: 4px;
                 padding: 5px 10px;
             }}
             QPushButton:hover {{
-                background-color: {bg_color}CC;
+                background-color: {hover_bg};
             }}
             QPushButton:pressed {{
-                background-color: {bg_color}99;
+                background-color: {pressed_bg};
             }}
         """
         )
@@ -128,6 +157,29 @@ class DailyScraper(QMainWindow):
 
         self.search_news()
         self.refresh_laws()
+
+        bottom_layout = QHBoxLayout()
+
+        self.theme_checkbox = QCheckBox()
+        self.theme_checkbox.setStyleSheet("padding: 5px;")
+
+        is_dark = self.settings.get("dark_mode", True)
+        self.theme_checkbox.setChecked(is_dark)
+        self.theme_checkbox.toggled.connect(self.toggle_theme)
+
+        bottom_layout.addWidget(self.theme_checkbox)
+        bottom_layout.addStretch()
+
+        self.startup_checkbox = QCheckBox("💻 윈도우 시작 시 자동 실행")
+        self.startup_checkbox.setStyleSheet("color: #777777; padding: 5px;")
+
+        self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
+        self.startup_checkbox.toggled.connect(self.toggle_startup)
+
+        bottom_layout.addWidget(self.startup_checkbox)
+        layout.addLayout(bottom_layout)
+
+        self.toggle_theme(is_dark, animate=False)
 
     def setup_news_tab(self):
         news_tab = QWidget()
@@ -275,7 +327,7 @@ class DailyScraper(QMainWindow):
         left_layout.addWidget(QLabel("📌 조회할 법령 목록"))
 
         add_law_btn = QPushButton("➕ 새 법령 추가")
-        add_law_btn.clicked.connect(lambda: self.add_law_row(""))
+        add_law_btn.clicked.connect(lambda: self.add_law_row("", True))
         left_layout.addWidget(add_law_btn)
 
         scroll = QScrollArea()
@@ -353,17 +405,24 @@ class DailyScraper(QMainWindow):
     def refresh_laws(self):
         self.law_table.setRowCount(0)
         all_law_infos = []
+        law_keys = set()
 
         for i in range(self.law_list_layout.count()):
             item = self.law_list_layout.itemAt(i).widget()
             if isinstance(item, EditableRowWidget) and item.checkbox.isChecked():
                 law_name = item.line_edit.text().strip()
+
                 if not law_name:
                     continue
 
                 infos = law_scraper.get_law_group_info(law_name)
                 if infos:
-                    all_law_infos.extend(infos)
+                    for info in infos:
+                        unique_key = info.get("serial")
+
+                        if unique_key not in law_keys:
+                            law_keys.add(unique_key)
+                            all_law_infos.append(info)
 
         all_law_infos.sort(key=lambda x: x["enforce_date"], reverse=True)
         today_str = datetime.now().strftime("%Y.%m.%d")
@@ -403,3 +462,43 @@ class DailyScraper(QMainWindow):
 
         if url:
             QDesktopServices.openUrl(QUrl(url))
+
+    def toggle_startup(self, checked):
+        success = startup_manager.set_startup(checked)
+        if not success:
+            QMessageBox.warning(
+                self,
+                "오류",
+                "시작 프로그램 설정에 실패했습니다.\n백신 프로그램이 차단했는지 확인해 주세요.",
+            )
+
+    def toggle_theme(self, checked, animate=True):
+        if animate:
+            overlay = QLabel(self)
+            overlay.setPixmap(self.grab())
+            overlay.resize(self.size())
+            overlay.move(0, 0)
+            overlay.show()
+
+        theme = "dark" if checked else "light"
+        qdarktheme.setup_theme(theme)
+
+        if checked:
+            self.theme_checkbox.setText("🌙")
+        else:
+            self.theme_checkbox.setText("☀️")
+
+        self.settings["dark_mode"] = checked
+        data_manager.save_settings(self.settings)
+
+        if animate:
+            self.opacity_effect = QGraphicsOpacityEffect(overlay)
+            overlay.setGraphicsEffect(self.opacity_effect)
+
+            self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
+            self.animation.setDuration(400)
+            self.animation.setStartValue(1.0)
+            self.animation.setEndValue(0.0)
+            self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+            self.animation.finished.connect(overlay.deleteLater)
+            self.animation.start()

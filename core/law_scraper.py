@@ -23,20 +23,30 @@ def get_law_group_info(law_name):
         response = requests.get(url, verify=False)
         response.raise_for_status()
         data = response.json()
-
         results = []
+
         if "LawSearch" in data and "law" in data["LawSearch"]:
+
             law_list = data["LawSearch"]["law"]
+
+            if isinstance(law_list, dict):
+                law_list = [law_list]
 
             for item in law_list:
                 item_name = item.get("법령명한글", "정보 없음")
+                law_serial = item.get("법령일련번호", "")
+                link = "https://www.law.go.kr/법령/" + item_name
+                unique_key = law_serial if law_serial else link
+
                 results.append(
                     {
+                        "serial": unique_key,
                         "name": item_name,
                         "enforce_date": format_date(item.get("시행일자", "정보 없음")),
-                        "link": "https://www.law.go.kr/법령/" + item_name,
+                        "link": link,
                     }
                 )
+
             return results
 
         print(f"'{law_name}'에 대한 검색 결과가 없거나 JSON 구조가 다릅니다.")
