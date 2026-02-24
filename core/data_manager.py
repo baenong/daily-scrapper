@@ -5,10 +5,9 @@ CONFIG_FILE = "settings.json"
 
 
 def load_settings():
-    # 파일이 없으면 기본 구조를 반환합니다.
     if not os.path.exists(CONFIG_FILE):
         return {
-            "keywords": ["조례", "행정"],  # 기본 테스트 키워드
+            "keywords": ["조례", "행정"],
             "laws": [],
             "law_api_key": "",
         }

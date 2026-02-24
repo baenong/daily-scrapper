@@ -2,7 +2,6 @@ import feedparser
 import urllib.parse
 import ssl
 from email.utils import parsedate_to_datetime
-from datetime import datetime, timezone
 
 ssl._create_default_https_context = ssl._create_unverified_context
 

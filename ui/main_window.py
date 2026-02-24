@@ -87,7 +87,6 @@ class EditableRowWidget(QWidget):
 
     def enable_edit(self):
         self.line_edit.setReadOnly(False)
-        # 🚨 흰 배경일 때 글씨가 검은색으로 보이도록 강제 지정
         self.line_edit.setStyleSheet("background-color: white; color: black;")
         self.line_edit.setFocus()
         self.btn_edit.hide()
@@ -190,8 +189,6 @@ class DailyScraper(QMainWindow):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        # splitter.setStretchFactor(0, 1)
-        # splitter.setStretchFactor(1, 2)
         splitter.setSizes([250, 550])
 
         self.tabs.addTab(news_tab, "뉴스 스크랩")
@@ -331,8 +328,6 @@ class DailyScraper(QMainWindow):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        # splitter.setStretchFactor(0, 1)
-        # splitter.setStretchFactor(1, 2)
         splitter.setSizes([250, 550])
 
         self.tabs.addTab(law_tab, "법령 개정 알림")
@@ -396,7 +391,7 @@ class DailyScraper(QMainWindow):
             if enforce_date == today_str and enforce_date != "정보 없음":
                 name_item.setBackground(QBrush(now_color))
                 date_item.setBackground(QBrush(now_color))
-                name_item.setText(f"💥 [오늘시행] {info['name']}")
+                name_item.setText(f"🚨 [오늘시행] {info['name']}")
 
             self.law_table.setItem(row, 0, name_item)
             self.law_table.setItem(row, 1, date_item)

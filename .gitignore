@@ -10,4 +10,4 @@ wheels/
 .venv
 
 settings.json
-*.ttf
+resources/
