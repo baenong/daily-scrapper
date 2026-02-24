@@ -1,13 +1,14 @@
 import feedparser
 import urllib.parse
 import ssl
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
 def get_news_by_query(query_string, limit=5):
 
-    # 구글 뉴스 RSS 피드 URL (한국어, 한국 지역 설정)
     if not query_string.strip():
         return []
 
@@ -16,18 +17,30 @@ def get_news_by_query(query_string, limit=5):
         f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     )
 
-    # RSS 피드 파싱
     feed = feedparser.parse(rss_url)
-
     news_list = []
-    # 위에서부터 지정한 수(limit)만큼만 기사를 추출합니다.
+
     for entry in feed.entries[:limit]:
+        try:
+            published_raw = getattr(entry, "published", "")
+
+            if not published_raw:
+                continue
+
+            pub_dt = parsedate_to_datetime(published_raw)
+
+        except Exception:
+            continue
+
         news_list.append(
             {
                 "title": entry.title,
                 "link": entry.link,
-                "published": getattr(entry, "published", "날짜 없음"),
+                "published_dt": pub_dt,
+                "published_str": pub_dt.strftime("%Y-%m-%d"),
             }
         )
+
+    news_list.sort(key=lambda x: x["published_dt"], reverse=True)
 
     return news_list

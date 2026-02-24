@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QButtonGroup,
 )
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QColor, QBrush
+from datetime import datetime, timezone
 
 # core 폴더의 모듈들을 불러옵니다.
 from core import data_manager
@@ -41,13 +42,12 @@ class StyledButton(QPushButton):
                 border: none;
                 border-radius: 4px;
                 padding: 5px 10px;
-                font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: {bg_color}CC; /* 마우스를 올렸을 때 살짝 투명해짐 */
+                background-color: {bg_color}CC;
             }}
             QPushButton:pressed {{
-                background-color: {bg_color}99; /* 클릭했을 때 효과 */
+                background-color: {bg_color}99;
             }}
         """
         )
@@ -56,17 +56,15 @@ class StyledButton(QPushButton):
 class EditableRowWidget(QWidget):
     """뉴스 키워드와 법령 목록 모두에서 재사용 가능한 체크박스+편집 위젯입니다."""
 
-    def __init__(self, text, save_callback):
+    def __init__(self, text, is_checked, save_callback):
         super().__init__()
-        self.save_callback = (
-            save_callback  # 탭에 따라 다른 저장 함수를 실행하기 위해 기억해둡니다.
-        )
+        self.save_callback = save_callback
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.checkbox = QCheckBox()
-        self.checkbox.setChecked(True)
+        self.checkbox.setChecked(is_checked)
 
         self.line_edit = QLineEdit(text)
         self.line_edit.setReadOnly(True)
@@ -75,7 +73,6 @@ class EditableRowWidget(QWidget):
         self.btn_edit = StyledButton("편집", "#2196F3")
         self.btn_save = StyledButton("저장", "#4CAF50")
         self.btn_save.hide()
-
         self.btn_del = StyledButton("❌", "transparent", "#F44336")
 
         layout.addWidget(self.checkbox)
@@ -114,7 +111,7 @@ class DailyScraper(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("시청 업무 보조 프로그램 v1.0")
-        self.resize(948, 600)
+        self.resize(1264, 800)
 
         # 설정 데이터 불러오기
         self.settings = data_manager.load_settings()
@@ -130,10 +127,10 @@ class DailyScraper(QMainWindow):
         self.setup_news_tab()
         self.setup_law_tab()
 
+        self.search_news()
         self.refresh_laws()
 
     def setup_news_tab(self):
-        """뉴스 탭을 좌우로 분할하여 구성합니다."""
         news_tab = QWidget()
         layout = QVBoxLayout(news_tab)
         splitter = QSplitter(Qt.Horizontal)
@@ -142,11 +139,12 @@ class DailyScraper(QMainWindow):
         # --- [왼쪽: 키워드 설정 영역] ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
+        left_layout.addWidget(QLabel("📌 검색할 키워드 목록"))
 
         cond_layout = QHBoxLayout()
-        self.radio_and = QRadioButton("AND (모두 포함)")
-        self.radio_or = QRadioButton("OR (하나라도 포함)")
-        self.radio_and.setChecked(True)  # 기본값
+        self.radio_and = QRadioButton("AND")
+        self.radio_or = QRadioButton("OR")
+        self.radio_and.setChecked(True)
 
         btn_group = QButtonGroup(self)
         btn_group.addButton(self.radio_and)
@@ -162,7 +160,7 @@ class DailyScraper(QMainWindow):
 
         # 키워드 추가 버튼
         add_btn = QPushButton("➕ 새 키워드 추가 (쉼표로 구분)")
-        add_btn.clicked.connect(lambda: self.add_keyword_row(""))
+        add_btn.clicked.connect(lambda: self.add_keyword_row("", True))
         left_layout.addWidget(add_btn)
 
         # 스크롤 가능한 키워드 목록 영역
@@ -174,8 +172,13 @@ class DailyScraper(QMainWindow):
         scroll.setWidget(self.keyword_list_widget)
         left_layout.addWidget(scroll)
 
-        for kw in self.settings.get("keywords", []):
-            self.add_keyword_row(kw)
+        for kw_data in self.settings.get("keywords", []):
+            if isinstance(kw_data, dict):
+                self.add_keyword_row(
+                    kw_data.get("text", ""), kw_data.get("checked", True)
+                )
+            else:
+                self.add_keyword_row(kw_data, True)
 
         # --- [오른쪽: 뉴스 결과 영역] ---
         right_widget = QWidget()
@@ -183,18 +186,18 @@ class DailyScraper(QMainWindow):
 
         self.news_list_view = QListWidget()
         self.news_list_view.itemDoubleClicked.connect(self.open_news_link)
-        right_layout.addWidget(QLabel("더블클릭하면 기사가 열립니다."))
         right_layout.addWidget(self.news_list_view)
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        # splitter.setStretchFactor(0, 1)
+        # splitter.setStretchFactor(1, 2)
+        splitter.setSizes([250, 550])
 
         self.tabs.addTab(news_tab, "뉴스 스크랩")
 
-    def add_keyword_row(self, text):
-        row = EditableRowWidget(text, self.save_keywords_to_settings)
+    def add_keyword_row(self, text, is_checked):
+        row = EditableRowWidget(text, is_checked, self.save_keywords_to_settings)
         self.keyword_list_layout.addWidget(row)
         if not text:  # 새 항목 추가 시 바로 편집 모드로
             row.enable_edit()
@@ -205,8 +208,9 @@ class DailyScraper(QMainWindow):
             item = self.keyword_list_layout.itemAt(i).widget()
             if isinstance(item, EditableRowWidget):
                 text = item.line_edit.text().strip()
+                is_checked = item.checkbox.isChecked()
                 if text:
-                    keywords.append(text)
+                    keywords.append({"text": text, "checked": is_checked})
         self.settings["keywords"] = keywords
         data_manager.save_settings(self.settings)
 
@@ -234,14 +238,22 @@ class DailyScraper(QMainWindow):
 
         self.news_list_view.clear()
         try:
-            news_items = news_scraper.get_news_by_query(final_query, limit=15)
+            news_items = news_scraper.get_news_by_query(final_query, limit=30)
             if not news_items:
                 self.news_list_view.addItem("검색 결과가 없습니다.")
                 return
+
+            now = datetime.now(timezone.utc)
+
             for news in news_items:
-                display_text = f"📰 {news['title']}\n🗓️ {news['published']}"
+                display_text = f"📰 {news['title']}\n🗓️ {news['published_str']}"
                 item = QListWidgetItem(display_text)
                 item.setData(100, news["link"])
+
+                delta = now - news["published_dt"]
+                if delta.days <= 7:
+                    item.setBackground(QColor(255, 0, 0, 30))
+
                 self.news_list_view.addItem(item)
         except Exception as e:
             QMessageBox.warning(
@@ -263,7 +275,6 @@ class DailyScraper(QMainWindow):
         # --- 왼쪽: 법령 목록 관리 ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-
         left_layout.addWidget(QLabel("📌 조회할 법령 목록"))
 
         add_law_btn = QPushButton("➕ 새 법령 추가")
@@ -278,8 +289,13 @@ class DailyScraper(QMainWindow):
         scroll.setWidget(self.law_list_widget)
         left_layout.addWidget(scroll)
 
-        for law in self.settings.get("laws", []):
-            self.add_law_row(law)
+        for law_data in self.settings.get("laws", []):
+            if isinstance(law_data, dict):
+                self.add_law_row(
+                    law_data.get("text", ""), law_data.get("checked", True)
+                )
+            else:
+                self.add_law_row(law_data, True)
 
         # --- 오른쪽: 법령 조회 결과 ---
         right_widget = QWidget()
@@ -294,23 +310,35 @@ class DailyScraper(QMainWindow):
         right_layout.addLayout(control_layout)
 
         self.law_table = QTableWidget()
-        self.law_table.setColumnCount(4)
-        self.law_table.setHorizontalHeaderLabels(
-            ["법령명", "시행일자", "개정구분", "상세링크 (더블클릭)"]
+        self.law_table.setColumnCount(2)
+        self.law_table.setHorizontalHeaderLabels(["법령명", "시행일자"])
+
+        self.law_table.setStyleSheet(
+            """
+            QTableWidget::item {
+                padding: 10px; 
+            }
+        """
         )
-        self.law_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.law_table.verticalHeader().setDefaultSectionSize(35)
+
+        header = self.law_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+
         self.law_table.itemDoubleClicked.connect(self.open_law_link)
         right_layout.addWidget(self.law_table)
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        # splitter.setStretchFactor(0, 1)
+        # splitter.setStretchFactor(1, 2)
+        splitter.setSizes([250, 550])
 
         self.tabs.addTab(law_tab, "법령 개정 알림")
 
-    def add_law_row(self, text):
-        row = EditableRowWidget(text, self.save_laws_to_settings)
+    def add_law_row(self, text, is_checked):
+        row = EditableRowWidget(text, is_checked, self.save_laws_to_settings)
         self.law_list_layout.addWidget(row)
         if not text:
             row.enable_edit()
@@ -321,13 +349,15 @@ class DailyScraper(QMainWindow):
             item = self.law_list_layout.itemAt(i).widget()
             if isinstance(item, EditableRowWidget):
                 text = item.line_edit.text().strip()
+                is_checked = item.checkbox.isChecked()
                 if text:
-                    laws.append(text)
+                    laws.append({"text": text, "checked": is_checked})
         self.settings["laws"] = laws
         data_manager.save_settings(self.settings)
 
     def refresh_laws(self):
         self.law_table.setRowCount(0)
+        all_law_infos = []
 
         for i in range(self.law_list_layout.count()):
             item = self.law_list_layout.itemAt(i).widget()
@@ -336,24 +366,45 @@ class DailyScraper(QMainWindow):
                 if not law_name:
                     continue
 
-                info = law_scraper.get_law_info(law_name)
-                if info:
-                    row = self.law_table.rowCount()
-                    self.law_table.insertRow(row)
-                    self.law_table.setItem(row, 0, QTableWidgetItem(info["name"]))
-                    self.law_table.setItem(
-                        row, 1, QTableWidgetItem(info["enforce_date"])
-                    )
-                    self.law_table.setItem(
-                        row, 2, QTableWidgetItem(info["revision_type"])
-                    )
+                infos = law_scraper.get_law_group_info(law_name)
+                if infos:
+                    all_law_infos.extend(infos)
 
-                    link_item = QTableWidgetItem("👉 링크 열기")
-                    link_item.setData(100, info["link"])
-                    self.law_table.setItem(row, 3, link_item)
+        all_law_infos.sort(key=lambda x: x["enforce_date"], reverse=True)
+        today_str = datetime.now().strftime("%Y.%m.%d")
+
+        future_color = QColor(255, 0, 0, 30)
+        now_color = QColor(255, 0, 0)
+
+        for info in all_law_infos:
+            row = self.law_table.rowCount()
+            self.law_table.insertRow(row)
+
+            name_item = QTableWidgetItem(info["name"])
+            date_item = QTableWidgetItem(info["enforce_date"])
+
+            date_item.setTextAlignment(Qt.AlignCenter)
+            name_item.setData(Qt.UserRole, info["link"])
+
+            enforce_date = info["enforce_date"]
+
+            if enforce_date > today_str and enforce_date != "정보 없음":
+                name_item.setBackground(QBrush(future_color))
+                date_item.setBackground(QBrush(future_color))
+                name_item.setText(f"🚀 [시행예정] {info['name']}")
+
+            if enforce_date == today_str and enforce_date != "정보 없음":
+                name_item.setBackground(QBrush(now_color))
+                date_item.setBackground(QBrush(now_color))
+                name_item.setText(f"💥 [오늘시행] {info['name']}")
+
+            self.law_table.setItem(row, 0, name_item)
+            self.law_table.setItem(row, 1, date_item)
 
     def open_law_link(self, item):
-        if item.column() == 3:
-            url = item.data(100)
-            if url:
-                QDesktopServices.openUrl(QUrl(url))
+        row = item.row()
+        name_item = self.law_table.item(row, 0)
+        url = name_item.data(Qt.UserRole)
+
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
