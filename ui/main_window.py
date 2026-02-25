@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QButtonGroup,
     QGraphicsOpacityEffect,
+    QSpinBox,
 )
 from PySide6.QtCore import Qt, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QDesktopServices, QColor, QBrush
@@ -33,7 +34,13 @@ from core import startup_manager
 
 
 class StyledButton(QPushButton):
-    """배경색과 글자색을 인자로 받아 예쁜 CSS 버튼을 만들어주는 클래스입니다."""
+    """
+    버튼의 색상을 입력받아 일관된 스타일의 버튼을 반환하는 클래스
+
+    text: 버튼의 caption
+    bg_color_hex: 배경색을 hex로 입력
+    text_color: (default: white) 글자색
+    """
 
     def __init__(self, text, bg_color_hex, text_color="white"):
         super().__init__(text)
@@ -138,7 +145,7 @@ class DailyScraper(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("시청 업무 보조 프로그램 v1.0")
+        self.setWindowTitle("뉴스 법령 스크래퍼")
         self.resize(1264, 800)
 
         # 설정 데이터 불러오기
@@ -158,8 +165,17 @@ class DailyScraper(QMainWindow):
         self.search_news()
         self.refresh_laws()
 
+        bottom_layout = self.setup_footer()
+
+        layout.addLayout(bottom_layout)
+
+    def setup_footer(self):
+        """
+        Footer : 다크모드, 윈도우 자동실행
+        """
         bottom_layout = QHBoxLayout()
 
+        # 테마
         self.theme_checkbox = QCheckBox()
         self.theme_checkbox.setStyleSheet("padding: 5px;")
 
@@ -168,8 +184,17 @@ class DailyScraper(QMainWindow):
         self.theme_checkbox.toggled.connect(self.toggle_theme)
 
         bottom_layout.addWidget(self.theme_checkbox)
+
+        # 저작권
+        bottom_layout.addStretch()
+        copyright_label = QLabel(
+            "Copyright 2026. 행정지원과 안민수 All rights reserved."
+        )
+        copyright_label.setStyleSheet("color: #555555;")
+        bottom_layout.addWidget(copyright_label)
         bottom_layout.addStretch()
 
+        # 윈도우 자동실행
         self.startup_checkbox = QCheckBox("💻 윈도우 시작 시 자동 실행")
         self.startup_checkbox.setStyleSheet("color: #777777; padding: 5px;")
 
@@ -177,11 +202,14 @@ class DailyScraper(QMainWindow):
         self.startup_checkbox.toggled.connect(self.toggle_startup)
 
         bottom_layout.addWidget(self.startup_checkbox)
-        layout.addLayout(bottom_layout)
-
         self.toggle_theme(is_dark, animate=False)
 
+        return bottom_layout
+
     def setup_news_tab(self):
+        """
+        뉴스 탭
+        """
         news_tab = QWidget()
         layout = QVBoxLayout(news_tab)
         splitter = QSplitter(Qt.Horizontal)
@@ -190,27 +218,47 @@ class DailyScraper(QMainWindow):
         # --- [왼쪽: 키워드 설정 영역] ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.addWidget(QLabel("📌 검색할 키워드 목록"))
+
+        keyword_title = QLabel("📌 검색할 키워드 목록")
+        keyword_title.setStyleSheet(
+            "font-weight: bold; font-size: 18px; margin-bottom: 10px;"
+        )
+        left_layout.addWidget(keyword_title)
 
         cond_layout = QHBoxLayout()
+
         self.radio_and = QRadioButton("AND")
         self.radio_or = QRadioButton("OR")
         self.radio_and.setChecked(True)
+        self.radio_and.setFixedWidth(55)
+        self.radio_or.setFixedWidth(55)
 
         btn_group = QButtonGroup(self)
         btn_group.addButton(self.radio_and)
         btn_group.addButton(self.radio_or)
 
-        search_btn = StyledButton("📰 뉴스 검색", "#4CAF50")
+        limit_label = QLabel("추출 갯수 : ")
+        limit_label.setFixedWidth(70)
+
+        self.news_limit = QSpinBox()
+        self.news_limit.setRange(1, 50)
+        self.news_limit.valueChanged.connect(self.change_news_limit)
+        self.news_limit.setValue(self.settings.get("news_limit", 15))
+        self.news_limit.setFixedWidth(60)
+
+        search_btn = StyledButton("뉴스 검색", "#4CAF50")
         search_btn.clicked.connect(self.search_news)
+        search_btn.setFixedWidth(100)
 
         cond_layout.addWidget(self.radio_and)
         cond_layout.addWidget(self.radio_or)
+        cond_layout.addWidget(limit_label)
+        cond_layout.addWidget(self.news_limit)
         cond_layout.addWidget(search_btn)
         left_layout.addLayout(cond_layout)
 
         # 키워드 추가 버튼
-        add_btn = QPushButton("➕ 새 키워드 추가 (쉼표로 구분)")
+        add_btn = QPushButton("➕ 뉴스 키워드 추가")
         add_btn.clicked.connect(lambda: self.add_keyword_row("", True))
         left_layout.addWidget(add_btn)
 
@@ -241,14 +289,14 @@ class DailyScraper(QMainWindow):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([250, 550])
+        splitter.setSizes([400, 864])
 
         self.tabs.addTab(news_tab, "뉴스 스크랩")
 
     def add_keyword_row(self, text, is_checked):
         row = EditableRowWidget(text, is_checked, self.save_keywords_to_settings)
         self.keyword_list_layout.addWidget(row)
-        if not text:  # 새 항목 추가 시 바로 편집 모드로
+        if not text:
             row.enable_edit()
 
     def save_keywords_to_settings(self):
@@ -264,6 +312,7 @@ class DailyScraper(QMainWindow):
         data_manager.save_settings(self.settings)
 
     def search_news(self):
+        # 설정된 조건(키워드, AND OR, limit 등)에 따른 뉴스를 검색
         selected_groups = []
         for i in range(self.keyword_list_layout.count()):
             item = self.keyword_list_layout.itemAt(i).widget()
@@ -287,7 +336,9 @@ class DailyScraper(QMainWindow):
 
         self.news_list_view.clear()
         try:
-            news_items = news_scraper.get_news_by_query(final_query, limit=30)
+            news_items = news_scraper.get_news_by_query(
+                final_query, limit=self.news_limit.value()
+            )
             if not news_items:
                 self.news_list_view.addItem("검색 결과가 없습니다.")
                 return
@@ -324,9 +375,21 @@ class DailyScraper(QMainWindow):
         # --- 왼쪽: 법령 목록 관리 ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        left_layout.addWidget(QLabel("📌 조회할 법령 목록"))
+        keyword_title = QLabel("📌 조회할 법령 목록")
+        keyword_title.setStyleSheet(
+            "font-weight: bold; font-size: 18px; margin-bottom: 10px;"
+        )
+        left_layout.addWidget(keyword_title)
 
-        add_law_btn = QPushButton("➕ 새 법령 추가")
+        control_layout = QHBoxLayout()
+        self.law_refresh_btn = StyledButton("선택 법령 정보 조회", "#4CAF50")
+        self.law_refresh_btn.clicked.connect(self.refresh_laws)
+
+        control_layout.addStretch()
+        control_layout.addWidget(self.law_refresh_btn)
+        left_layout.addLayout(control_layout)
+
+        add_law_btn = QPushButton("➕ 법령 키워드 추가")
         add_law_btn.clicked.connect(lambda: self.add_law_row("", True))
         left_layout.addWidget(add_law_btn)
 
@@ -350,14 +413,6 @@ class DailyScraper(QMainWindow):
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
 
-        control_layout = QHBoxLayout()
-        self.law_refresh_btn = StyledButton("🔄 선택 법령 정보 조회", "#2196F3")
-        self.law_refresh_btn.clicked.connect(self.refresh_laws)
-
-        control_layout.addStretch()
-        control_layout.addWidget(self.law_refresh_btn)
-        right_layout.addLayout(control_layout)
-
         self.law_table = QTableWidget()
         self.law_table.setColumnCount(2)
         self.law_table.setHorizontalHeaderLabels(["법령명", "시행일자"])
@@ -380,7 +435,7 @@ class DailyScraper(QMainWindow):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([250, 550])
+        splitter.setSizes([400, 864])
 
         self.tabs.addTab(law_tab, "법령 개정 알림")
 
@@ -462,6 +517,10 @@ class DailyScraper(QMainWindow):
 
         if url:
             QDesktopServices.openUrl(QUrl(url))
+
+    def change_news_limit(self):
+        self.settings["news_limit"] = self.news_limit.value()
+        data_manager.save_settings(self.settings)
 
     def toggle_startup(self, checked):
         success = startup_manager.set_startup(checked)

@@ -6,12 +6,12 @@ from email.utils import parsedate_to_datetime
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-def get_news_by_query(query_string, limit=5):
+def get_news_by_query(query_string, limit=15):
 
     if not query_string.strip():
         return []
 
-    encoded_query = urllib.parse.quote(query_string)
+    encoded_query = urllib.parse.quote(f"{query_string} when:30d")
     rss_url = (
         f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     )
@@ -19,7 +19,7 @@ def get_news_by_query(query_string, limit=5):
     feed = feedparser.parse(rss_url)
     news_list = []
 
-    for entry in feed.entries[:limit]:
+    for entry in feed.entries:
         try:
             published_raw = getattr(entry, "published", "")
 
@@ -42,4 +42,4 @@ def get_news_by_query(query_string, limit=5):
 
     news_list.sort(key=lambda x: x["published_dt"], reverse=True)
 
-    return news_list
+    return news_list[:limit]

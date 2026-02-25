@@ -24,7 +24,9 @@ if __name__ == "__main__":
         font_id = QFontDatabase.addApplicationFont(font_path)
         if font_id != -1:
             font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
-            app.setFont(QFont(font_family, 11))
+            font = QFont(font_family)
+            font.setPixelSize(14)
+            app.setFont(font)
 
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
