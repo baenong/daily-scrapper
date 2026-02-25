@@ -89,6 +89,21 @@ class StyledButton(QPushButton):
         )
 
 
+class TitleLabel(QLabel):
+    def __init__(self, text, no_description=True):
+        super().__init__(text)
+
+        self.setStyleSheet(
+            f"font-weight: bold; font-size: 18px;{"margin-bottom: 10px;" if no_description else ""}"
+        )
+
+
+class DescriptionLabel(QLabel):
+    def __init__(self, text):
+        super().__init__(text)
+        self.setStyleSheet("color: #777777; margin-bottom: 10px;")
+
+
 class EditableRowWidget(QWidget):
     """뉴스 키워드와 법령 목록 모두에서 재사용 가능한 체크박스+편집 위젯입니다."""
 
@@ -169,43 +184,6 @@ class DailyScraper(QMainWindow):
 
         layout.addLayout(bottom_layout)
 
-    def setup_footer(self):
-        """
-        Footer : 다크모드, 윈도우 자동실행
-        """
-        bottom_layout = QHBoxLayout()
-
-        # 테마
-        self.theme_checkbox = QCheckBox()
-        self.theme_checkbox.setStyleSheet("padding: 5px;")
-
-        is_dark = self.settings.get("dark_mode", True)
-        self.theme_checkbox.setChecked(is_dark)
-        self.theme_checkbox.toggled.connect(self.toggle_theme)
-
-        bottom_layout.addWidget(self.theme_checkbox)
-
-        # 저작권
-        bottom_layout.addStretch()
-        copyright_label = QLabel(
-            "Copyright 2026. 행정지원과 안민수 All rights reserved."
-        )
-        copyright_label.setStyleSheet("color: #555555;")
-        bottom_layout.addWidget(copyright_label)
-        bottom_layout.addStretch()
-
-        # 윈도우 자동실행
-        self.startup_checkbox = QCheckBox("💻 윈도우 시작 시 자동 실행")
-        self.startup_checkbox.setStyleSheet("color: #777777; padding: 5px;")
-
-        self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
-        self.startup_checkbox.toggled.connect(self.toggle_startup)
-
-        bottom_layout.addWidget(self.startup_checkbox)
-        self.toggle_theme(is_dark, animate=False)
-
-        return bottom_layout
-
     def setup_news_tab(self):
         """
         뉴스 탭
@@ -219,10 +197,7 @@ class DailyScraper(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
 
-        keyword_title = QLabel("📌 검색할 키워드 목록")
-        keyword_title.setStyleSheet(
-            "font-weight: bold; font-size: 18px; margin-bottom: 10px;"
-        )
+        keyword_title = TitleLabel("📌 검색할 키워드 목록")
         left_layout.addWidget(keyword_title)
 
         cond_layout = QHBoxLayout()
@@ -282,6 +257,13 @@ class DailyScraper(QMainWindow):
         # --- [오른쪽: 뉴스 결과 영역] ---
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+
+        right_layout.addWidget(TitleLabel("스크랩 결과", False))
+        right_layout.addWidget(
+            DescriptionLabel(
+                "30일 이내 뉴스 기사를 최신순으로 정렬하고 최근 1주일 내 기사는 강조합니다."
+            )
+        )
 
         self.news_list_view = QListWidget()
         self.news_list_view.itemDoubleClicked.connect(self.open_news_link)
@@ -360,6 +342,10 @@ class DailyScraper(QMainWindow):
                 self, "오류", f"뉴스를 검색하는 중 오류가 발생했습니다:\n{e}"
             )
 
+    def change_news_limit(self):
+        self.settings["news_limit"] = self.news_limit.value()
+        data_manager.save_settings(self.settings)
+
     def open_news_link(self, item):
         url = item.data(100)
         if url:
@@ -375,10 +361,7 @@ class DailyScraper(QMainWindow):
         # --- 왼쪽: 법령 목록 관리 ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
-        keyword_title = QLabel("📌 조회할 법령 목록")
-        keyword_title.setStyleSheet(
-            "font-weight: bold; font-size: 18px; margin-bottom: 10px;"
-        )
+        keyword_title = TitleLabel("📌 조회할 법령 목록")
         left_layout.addWidget(keyword_title)
 
         control_layout = QHBoxLayout()
@@ -413,9 +396,14 @@ class DailyScraper(QMainWindow):
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
 
+        right_layout.addWidget(TitleLabel("법령 목록", False))
+        right_layout.addWidget(
+            DescriptionLabel("현행 및 시행 예정 법령을 일자순으로 정렬합니다.")
+        )
+
         self.law_table = QTableWidget()
         self.law_table.setColumnCount(2)
-        self.law_table.setHorizontalHeaderLabels(["법령명", "시행일자"])
+        self.law_table.setHorizontalHeaderLabels(["법령명", "시행(예정)일자"])
 
         self.law_table.setStyleSheet(
             """
@@ -518,9 +506,42 @@ class DailyScraper(QMainWindow):
         if url:
             QDesktopServices.openUrl(QUrl(url))
 
-    def change_news_limit(self):
-        self.settings["news_limit"] = self.news_limit.value()
-        data_manager.save_settings(self.settings)
+    def setup_footer(self):
+        """
+        Footer : 다크모드, 윈도우 자동실행
+        """
+        bottom_layout = QHBoxLayout()
+
+        # 테마
+        self.theme_checkbox = QCheckBox()
+        self.theme_checkbox.setStyleSheet("padding: 5px;")
+
+        is_dark = self.settings.get("dark_mode", True)
+        self.theme_checkbox.setChecked(is_dark)
+        self.theme_checkbox.toggled.connect(self.toggle_theme)
+
+        bottom_layout.addWidget(self.theme_checkbox)
+
+        # 저작권
+        bottom_layout.addStretch()
+        copyright_label = QLabel(
+            "Copyright 2026. 행정지원과 안민수 All rights reserved."
+        )
+        copyright_label.setStyleSheet("color: #555555;")
+        bottom_layout.addWidget(copyright_label)
+        bottom_layout.addStretch()
+
+        # 윈도우 자동실행
+        self.startup_checkbox = QCheckBox("💻 윈도우 시작 시 자동 실행")
+        self.startup_checkbox.setStyleSheet("color: #777777; padding: 5px;")
+
+        self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
+        self.startup_checkbox.toggled.connect(self.toggle_startup)
+
+        bottom_layout.addWidget(self.startup_checkbox)
+        self.toggle_theme(is_dark, animate=False)
+
+        return bottom_layout
 
     def toggle_startup(self, checked):
         success = startup_manager.set_startup(checked)

@@ -1,7 +1,10 @@
 import sys
 import os
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QFontDatabase, QFont, QIcon
+import ctypes
+import time
+from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtGui import QFontDatabase, QFont, QIcon, QColor, QPainter, QPixmap
+from PySide6.QtCore import Qt, QRect
 
 from ui.main_window import DailyScraper
 
@@ -15,13 +18,69 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+class CustomSplashScreen(QSplashScreen):
+    def __init__(self, pixmap):
+        super().__init__(pixmap)
+        self.setFont(QFont("Malgun Gothic", 10, QFont.Bold))
+
+    def drawContents(self, painter):
+        pixmap = self.pixmap()
+        painter.drawPixmap(0, 0, pixmap)
+
+        text = self.message()
+        if not text:
+            return
+
+        rect = self.rect()  # 전체 크기
+        text_rect = QRect(0, rect.height() - 50, rect.width(), 30)
+        painter.fillRect(text_rect, QColor(0, 0, 0, 180))
+        painter.setPen(Qt.white)  # 글씨 색상
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.drawText(text_rect, Qt.AlignCenter, text)
+
+        # copyright part
+        copyright_font = QFont("Arial", 8)
+        painter.setFont(copyright_font)
+        rect = self.rect()
+        copyright_rect = QRect(0, rect.height() - 20, rect.width(), 20)
+        painter.fillRect(copyright_rect, QColor(0, 0, 0, 180))
+        painter.setPen(QColor(200, 200, 200))
+        copyright_text = "Copyright 2026. 행정지원과 안민수 All rights reserved."
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.drawText(copyright_rect, Qt.AlignCenter, copyright_text)
+
+
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        myappid = "ahnminsoo.daily-scrapper.v1.0"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
     app = QApplication(sys.argv)
+
+    splash_path = resource_path(os.path.join("resources", "logo.png"))
+    splash_pix = QPixmap(splash_path)
+
+    if splash_pix.isNull():
+        splash_pix = QPixmap(500, 300)
+        splash_pix.fill(Qt.white)
+
+    splash = CustomSplashScreen(splash_pix)
+    splash.showMessage(
+        "프로그램 초기화 중...", Qt.AlignBottom | Qt.AlignCenter, Qt.black
+    )
+    splash.show()
+    app.processEvents()
+
     font_path = resource_path(os.path.join("resources", "PretendardVariable.ttf"))
     icon_path = resource_path(os.path.join("resources", "icon.ico"))
 
+    splash.showMessage("리소스 로드 중...", Qt.AlignBottom | Qt.AlignCenter, Qt.black)
+    app.processEvents()
+    time.sleep(0.5)
+
     if os.path.exists(font_path):
         font_id = QFontDatabase.addApplicationFont(font_path)
+
         if font_id != -1:
             font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
             font = QFont(font_family)
@@ -31,6 +90,13 @@ if __name__ == "__main__":
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
+    splash.showMessage(
+        "사용자 인터페이스 구성 중...", Qt.AlignBottom | Qt.AlignCenter, Qt.black
+    )
+    app.processEvents()
+
     window = DailyScraper()
     window.show()
+    splash.finish(window)
+
     sys.exit(app.exec())
