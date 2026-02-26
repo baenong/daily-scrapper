@@ -37,6 +37,7 @@ def get_news_by_query(query_string, limit=15):
                 "link": entry.link,
                 "published_dt": pub_dt,
                 "published_str": pub_dt.strftime("%Y-%m-%d"),
+                "source": entry.source.title,
             }
         )
 
