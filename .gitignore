@@ -12,3 +12,4 @@ wheels/
 settings.json
 resources/
 *.spec
+data.db

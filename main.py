@@ -7,6 +7,7 @@ from PySide6.QtGui import QFontDatabase, QFont, QIcon, QColor, QPainter, QPixmap
 from PySide6.QtCore import Qt, QRect
 
 from ui.main_window import DailyScraper
+from core import db_manager
 
 
 def resource_path(relative_path):
@@ -55,6 +56,7 @@ if __name__ == "__main__":
         myappid = "ahnminsoo.daily-scrapper.v1.0"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
+    db_manager.init_db()
     app = QApplication(sys.argv)
 
     splash_path = resource_path(os.path.join("resources", "logo.png"))

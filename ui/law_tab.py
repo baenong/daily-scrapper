@@ -14,7 +14,7 @@ from PySide6.QtGui import QColor, QBrush, QDesktopServices
 from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
-from core import data_manager, law_scraper
+from core import law_scraper, db_manager
 
 
 class LawTab(QWidget):
@@ -61,13 +61,9 @@ class LawTab(QWidget):
         scroll.setWidget(self.law_list_widget)
         left_layout.addWidget(scroll)
 
-        for law_data in self.settings.get("laws", []):
-            if isinstance(law_data, dict):
-                self.add_law_row(
-                    law_data.get("text", ""), law_data.get("checked", True)
-                )
-            else:
-                self.add_law_row(law_data, True)
+        # Load DB data
+        for law_data in db_manager.load_law_keywords():
+            self.add_law_row(law_data.get("text", ""), law_data.get("checked", True))
 
         # --- [오른쪽: 법령 조회 결과] ---
         right_widget = QWidget()
@@ -96,12 +92,12 @@ class LawTab(QWidget):
         splitter.setSizes([400, 864])
 
     def add_law_row(self, text, is_checked):
-        row = EditableRowWidget(text, is_checked, self.save_laws_to_settings)
+        row = EditableRowWidget(text, is_checked, self.save_laws_to_db)
         self.law_list_layout.addWidget(row)
         if not text:
             row.enable_edit()
 
-    def save_laws_to_settings(self):
+    def save_laws_to_db(self):
         laws = []
         for i in range(self.law_list_layout.count()):
             item = self.law_list_layout.itemAt(i).widget()
@@ -110,8 +106,8 @@ class LawTab(QWidget):
                 is_checked = item.checkbox.isChecked()
                 if text:
                     laws.append({"text": text, "checked": is_checked})
-        self.settings["laws"] = laws
-        data_manager.save_settings(self.settings)
+
+        db_manager.save_law_keywords(laws)
 
     def refresh_laws(self):
         self.law_table.setRowCount(0)

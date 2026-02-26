@@ -17,8 +17,10 @@ from core import data_manager
 from core import startup_manager
 
 # Components
+from ui.dashboard_tab import DashboardTab
 from ui.news_tab import NewsTab
 from ui.law_tab import LawTab
+from ui.schedule_tab import ScheduleTab
 
 
 class DailyScraper(QMainWindow):
@@ -39,14 +41,21 @@ class DailyScraper(QMainWindow):
         layout.addWidget(self.tabs)
 
         # 탭 구성
+        self.dashboard_tab = DashboardTab(self.settings, self.go_to_tab)
         self.news_tab = NewsTab(self.settings)
-        self.tabs.addTab(self.news_tab, "뉴스 스크랩")
-
         self.law_tab = LawTab(self.settings)
-        self.tabs.addTab(self.law_tab, "법령 개정 알림")
+        self.schedule_tab = ScheduleTab(self.settings)
+
+        self.tabs.addTab(self.dashboard_tab, "🏠 대시보드")
+        self.tabs.addTab(self.news_tab, "📰 뉴스 스크랩")
+        self.tabs.addTab(self.law_tab, "⚖️ 법령 개정 알림")
+        self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
 
         bottom_layout = self.setup_footer()
         layout.addLayout(bottom_layout)
+
+    def go_to_tab(self, index):
+        self.tabs.setCurrentIndex(index)
 
     def setup_footer(self):
         """

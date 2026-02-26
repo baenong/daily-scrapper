@@ -11,14 +11,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
 )
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime, timezone
 
-from core import data_manager, news_scraper
+from core import data_manager, news_scraper, db_manager
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 
 
@@ -58,8 +57,8 @@ class NewsTab(QWidget):
         btn_group.addButton(self.radio_and)
         btn_group.addButton(self.radio_or)
 
-        limit_label = QLabel("추출 갯수 : ")
-        limit_label.setFixedWidth(75)
+        limit_label = QLabel("추출 : ")
+        limit_label.setFixedWidth(35)
 
         self.news_limit = QSpinBox()
         self.news_limit.setRange(1, 50)
@@ -67,7 +66,7 @@ class NewsTab(QWidget):
         self.news_limit.valueChanged.connect(self.change_news_limit)
         self.news_limit.setFixedWidth(60)
 
-        search_btn = StyledButton("뉴스 검색", "#4CAF50")
+        search_btn = StyledButton("검색", "#4CAF50")
         search_btn.clicked.connect(self.search_news)
 
         cond_layout.addWidget(self.radio_and)
@@ -89,13 +88,8 @@ class NewsTab(QWidget):
         scroll.setWidget(self.keyword_list_widget)
         left_layout.addWidget(scroll)
 
-        for kw_data in self.settings.get("keywords", []):
-            if isinstance(kw_data, dict):
-                self.add_keyword_row(
-                    kw_data.get("text", ""), kw_data.get("checked", True)
-                )
-            else:
-                self.add_keyword_row(kw_data, True)
+        for kw_data in db_manager.load_news_keywords():
+            self.add_keyword_row(kw_data.get("text", ""), kw_data.get("checked", True))
 
         # --- [오른쪽: 뉴스 결과 영역] ---
         right_widget = QWidget()
@@ -129,12 +123,13 @@ class NewsTab(QWidget):
         splitter.setSizes([400, 864])
 
     def add_keyword_row(self, text, is_checked):
-        row = EditableRowWidget(text, is_checked, self.save_keywords_to_settings)
+        row = EditableRowWidget(text, is_checked, self.save_keywords_to_db)
         self.keyword_list_layout.addWidget(row)
         if not text:
             row.enable_edit()
 
-    def save_keywords_to_settings(self):
+    def save_keywords_to_db(self):
+        """변경된 키워드를 JSON이 아닌 DB에 저장합니다."""
         keywords = []
         for i in range(self.keyword_list_layout.count()):
             item = self.keyword_list_layout.itemAt(i).widget()
@@ -143,8 +138,8 @@ class NewsTab(QWidget):
                 is_checked = item.checkbox.isChecked()
                 if text:
                     keywords.append({"text": text, "checked": is_checked})
-        self.settings["keywords"] = keywords
-        data_manager.save_settings(self.settings)
+
+        db_manager.save_news_keywords(keywords)
 
     def search_news(self):
         selected_groups = []
@@ -158,7 +153,6 @@ class NewsTab(QWidget):
                     selected_groups.append(group_query)
 
         if not selected_groups:
-            QMessageBox.information(self, "알림", "검색할 키워드 묶음을 체크해 주세요.")
             return
 
         final_query = ""
@@ -188,14 +182,12 @@ class NewsTab(QWidget):
                 item.setData(100, news["link"])
 
                 delta = now - news["published_dt"]
-                if delta.days <= 7:
+                if delta.days <= 3:
                     item.setBackground(QColor(255, 0, 0, 30))
 
                 self.news_list_view.addItem(item)
         except Exception as e:
-            QMessageBox.warning(
-                self, "오류", f"뉴스를 검색하는 중 오류가 발생했습니다:\n{e}"
-            )
+            return
 
     def filter_news_list(self):
         keyword = self.news_filter_input.text().strip().lower()
