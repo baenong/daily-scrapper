@@ -2,6 +2,16 @@ import sys
 import os
 import ctypes
 import time
+
+from dotenv import load_dotenv
+
+if getattr(sys, "frozen", False):
+    base_dir = sys._MEIPASS
+else:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+load_dotenv(os.path.join(base_dir, ".env"))
+
 from PySide6.QtWidgets import QApplication, QSplashScreen
 from PySide6.QtGui import QFontDatabase, QFont, QIcon, QColor, QPainter, QPixmap
 from PySide6.QtCore import Qt, QRect

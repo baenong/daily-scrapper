@@ -1,3 +1,4 @@
+import os
 import requests
 import xml.etree.ElementTree as ET
 from PySide6.QtWidgets import (
@@ -23,20 +24,20 @@ from PySide6.QtGui import QColor
 from ui.components import TitleLabel, StyledButton
 from core import db_manager
 
-# 🚨 API 키 입력란
-HOLIDAY_API_KEY = ""
-
 
 def get_holidays(year, month):
-    if not HOLIDAY_API_KEY:
+    api_key = os.environ.get("HOLIDAY_API_KEY", "")
+
+    if not api_key:
         return {}
+
     url = (
         "http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"
     )
     params = {
         "solYear": str(year),
         "solMonth": f"{month:02d}",
-        "ServiceKey": requests.utils.unquote(HOLIDAY_API_KEY),
+        "ServiceKey": requests.utils.unquote(api_key),
     }
     try:
         res = requests.get(url, params=params, timeout=3)

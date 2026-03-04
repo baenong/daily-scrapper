@@ -1,9 +1,9 @@
+import os
 import requests
 import urllib.parse
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-API_KEY = ""
 
 
 def format_date(date_str):
@@ -13,11 +13,13 @@ def format_date(date_str):
 
 
 def get_law_group_info(law_name):
-    if not API_KEY:
+    api_key = os.environ.get("LAW_API_KEY", "")
+
+    if not api_key:
         return []
 
     encoded_query = urllib.parse.quote(law_name)
-    url = f"https://www.law.go.kr/DRF/lawSearch.do?OC={API_KEY}&target=eflaw&type=json&query={encoded_query}&nw=2,3"
+    url = f"https://www.law.go.kr/DRF/lawSearch.do?OC={api_key}&target=eflaw&type=json&query={encoded_query}&nw=2,3"
 
     try:
         response = requests.get(url, verify=False)

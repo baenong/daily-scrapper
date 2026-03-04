@@ -9,5 +9,6 @@ dependencies = [
     "pyinstaller>=6.19.0",
     "pyqtdarktheme>=2.1.0",
     "pyside6-essentials>=6.10.2",
+    "python-dotenv>=1.2.2",
     "requests>=2.32.5",
 ]
