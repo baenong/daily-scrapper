@@ -39,13 +39,18 @@ def init_db():
         """
     )
 
+    # 2026. 3. 4. 신규 스케쥴러
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS todos (
+        CREATE TABLE IF NOT EXISTS schedules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            target_date TEXT NOT NULL,
-            content TEXT NOT NULL,
-            is_completed INTEGER DEFAULT 0 -- 0: 미완료, 1: 완료
+            title TEXT NOT NULL,
+            start_date TEXT NOT NULL,  
+            end_date TEXT NOT NULL,    
+            repeat_type TEXT DEFAULT 'none', 
+            repeat_end TEXT,           
+            color TEXT DEFAULT '#2196F3',
+            is_completed INTEGER DEFAULT 0 -- 완료 여부 추가
         )
         """
     )
@@ -63,60 +68,85 @@ def init_db():
     conn.close()
 
 
-def get_todos(target_date=None):
+def add_schedule(
+    title, start_date, end_date, repeat_type, repeat_end, color, is_completed=False
+):
     conn = get_connection()
-
     cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO schedules (title, start_date, end_date, repeat_type, repeat_end, color, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            title,
+            start_date,
+            end_date,
+            repeat_type,
+            repeat_end,
+            color,
+            int(is_completed),
+        ),
+    )
+    conn.commit()
+    conn.close()
 
-    if target_date:
-        cursor.execute(
-            "SELECT id, target_date, content, is_completed FROM todos WHERE target_date = ? ORDER BY id ASC",
-            (target_date,),
-        )
-    else:
-        cursor.execute(
-            "SELECT id, target_date, content, is_completed FROM todos ORDER BY target_date ASC"
-        )
 
+def update_schedule(
+    schedule_id,
+    title,
+    start_date,
+    end_date,
+    repeat_type,
+    repeat_end,
+    color,
+    is_completed,
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE schedules SET title=?, start_date=?, end_date=?, repeat_type=?, repeat_end=?, color=?, is_completed=? WHERE id=?",
+        (
+            title,
+            start_date,
+            end_date,
+            repeat_type,
+            repeat_end,
+            color,
+            int(is_completed),
+            schedule_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_schedule(schedule_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_schedules():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, title, start_date, end_date, repeat_type, repeat_end, color, is_completed FROM schedules"
+    )
     rows = cursor.fetchall()
     conn.close()
-
     return [
-        {"id": r[0], "date": r[1], "content": r[2], "is_completed": bool(r[3])}
+        {
+            "id": r[0],
+            "title": r[1],
+            "start_date": r[2],
+            "end_date": r[3],
+            "repeat_type": r[4],
+            "repeat_end": r[5],
+            "color": r[6],
+            "is_completed": bool(r[7]),
+        }
         for r in rows
     ]
-
-
-def add_todo(target_date, content):
-    """새로운 일정을 추가합니다."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO todos (target_date, content, is_completed) VALUES (?, ?, 0)",
-        (target_date, content),
-    )
-    conn.commit()
-    conn.close()
-
-
-def update_todo_status(todo_id, is_completed):
-    """일정의 체크(완료) 상태를 변경합니다."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE todos SET is_completed = ? WHERE id = ?", (int(is_completed), todo_id)
-    )
-    conn.commit()
-    conn.close()
-
-
-def delete_todo(todo_id):
-    """일정을 삭제합니다."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-    conn.commit()
-    conn.close()
 
 
 # Keyword Functions

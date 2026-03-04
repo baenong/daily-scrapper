@@ -13,6 +13,7 @@ from datetime import datetime
 
 # 공통 부품 및 코어 모듈 불러오기
 from ui.components import TitleLabel, StyledButton
+from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper
 
 
@@ -146,17 +147,35 @@ class DashboardTab(QWidget):
 
     def load_dashboard_data(self):
         """각 모듈에서 데이터를 가져와 카드에 요약해서 뿌려줍니다."""
-        today_str_db = QDate.currentDate().toString("yyyy-MM-dd")
+        today_qdate = QDate.currentDate()
         today_str_law = datetime.now().strftime("%Y.%m.%d")
 
-        # 1. 일정 로드
-        todos = db_manager.get_todos(today_str_db)
-        if not todos:
+        # 1. 일정 로드 (수정된 부분)
+        self.todo_card.list_widget.clear()
+        all_schedules = db_manager.get_schedules()
+        today_events = []
+
+        # 오늘 날짜에 걸쳐있는 모든 일정을 찾습니다.
+        for s in all_schedules:
+            instances = get_instances(s, today_qdate, today_qdate)
+            if instances:
+                today_events.append(s)
+
+        # 미완료 일정이 위로 오도록 정렬합니다.
+        today_events.sort(key=lambda x: x.get("is_completed", False))
+
+        if not today_events:
             self.todo_card.add_item("✅ 오늘 등록된 일정이 없습니다.")
         else:
-            for t in todos[:5]:  # 최대 5개만 표시
-                prefix = "✔️ " if t["is_completed"] else "☐ "
-                self.todo_card.add_item(prefix + t["content"], use_ellipsis=False)
+            for t in today_events[:5]:  # 최대 5개만 표시
+                is_comp = t.get("is_completed", False)
+                prefix = "✔️ " if is_comp else "☐ "
+
+                item = QListWidgetItem(prefix + t["title"])
+                if is_comp:
+                    item.setForeground(Qt.gray)  # 완료된 항목은 회색 처리
+
+                self.todo_card.list_widget.addItem(item)
 
         # 2. 뉴스 로드
         self.news_card.list_widget.clear()

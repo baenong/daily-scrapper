@@ -98,7 +98,7 @@ class NewsTab(QWidget):
         right_layout.addWidget(TitleLabel("스크랩 결과"))
         right_layout.addWidget(
             DescriptionLabel(
-                "30일 이내 뉴스 기사를 최신순으로 정렬하고 최근 1주일 내 기사는 강조합니다."
+                "30일 이내 뉴스 기사를 최신순으로 정렬하고 최근 3일 내 기사는 강조합니다."
             )
         )
 
@@ -129,7 +129,7 @@ class NewsTab(QWidget):
             row.enable_edit()
 
     def save_keywords_to_db(self):
-        """변경된 키워드를 JSON이 아닌 DB에 저장합니다."""
+        """변경된 키워드를 DB에 저장합니다."""
         keywords = []
         for i in range(self.keyword_list_layout.count()):
             item = self.keyword_list_layout.itemAt(i).widget()

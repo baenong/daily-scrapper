@@ -54,6 +54,16 @@ class DailyScraper(QMainWindow):
         bottom_layout = self.setup_footer()
         layout.addLayout(bottom_layout)
 
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+
+    def on_tab_changed(self, index):
+        """탭 이동 시 필요한 화면의 데이터를 실시간으로 현행화(새로고침)합니다."""
+        if index == 0:
+            self.dashboard_tab.load_dashboard_data()
+        elif index == 3:
+            self.schedule_tab.fetch_data()
+            self.schedule_tab.draw_overlays()
+
     def go_to_tab(self, index):
         self.tabs.setCurrentIndex(index)
 
