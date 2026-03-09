@@ -201,7 +201,6 @@ class NewsTab(QWidget):
 
     def change_news_limit(self):
         self.settings["news_limit"] = self.news_limit.value()
-        data_manager.save_settings(self.settings)
 
     def open_news_link(self, item):
         url = item.data(100)

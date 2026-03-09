@@ -112,7 +112,7 @@ class DashboardTab(QWidget):
         layout.setContentsMargins(40, 40, 40, 40)
 
         welcome_label = TitleLabel(
-            f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 업무를 확인하세요."
+            f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요."
         )
         welcome_label.setStyleSheet(
             "font-size: 20px; font-weight: bold; margin-bottom: 20px;"
@@ -165,15 +165,15 @@ class DashboardTab(QWidget):
         today_events.sort(key=lambda x: x.get("is_completed", False))
 
         if not today_events:
-            self.todo_card.add_item("✅ 오늘 등록된 일정이 없습니다.")
+            self.todo_card.add_item("❌ 오늘 등록된 일정이 없습니다.")
         else:
             for t in today_events[:5]:  # 최대 5개만 표시
                 is_comp = t.get("is_completed", False)
-                prefix = "✔️ " if is_comp else "☐ "
+                prefix = "✅ " if is_comp else "✏️ "
 
                 item = QListWidgetItem(prefix + t["title"])
                 if is_comp:
-                    item.setForeground(Qt.gray)  # 완료된 항목은 회색 처리
+                    item.setForeground(Qt.gray)
 
                 self.todo_card.list_widget.addItem(item)
 
@@ -217,4 +217,4 @@ class DashboardTab(QWidget):
                 for name in today_laws[:5]:
                     self.law_card.add_item(f"• {name}", use_ellipsis=True)
             else:
-                self.law_card.add_item("✅ 오늘 시행/개정되는 법령이 없습니다.")
+                self.law_card.add_item("❌ 오늘 시행/개정되는 법령이 없습니다.")

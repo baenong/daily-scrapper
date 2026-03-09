@@ -1,5 +1,6 @@
 import os
 import requests
+import webbrowser
 import xml.etree.ElementTree as ET
 from PySide6.QtWidgets import (
     QWidget,
@@ -12,7 +13,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
     QDateEdit,
-    QPushButton,
     QCheckBox,
     QListWidget,
     QListWidgetItem,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QColor
 from ui.components import TitleLabel, StyledButton
-from core import db_manager
+from core import db_manager, law_scraper
 
 
 def get_holidays(year, month):
@@ -98,7 +98,7 @@ class EventDialog(QDialog):
     def __init__(self, date_str, schedule_data=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("일정 관리")
-        self.setFixedSize(380, 500)
+        self.setFixedSize(380, 450)
         self.schedule_data = schedule_data
 
         layout = QVBoxLayout(self)
@@ -147,10 +147,11 @@ class EventDialog(QDialog):
 
         self.color_combo = QComboBox()
         self.colors = {
-            "파란색": "#2196F3",
+            "빨간색": "#FF968A",
+            "주황색": "#FF7F00",
+            "노란색": "#F4D980",
             "초록색": "#4CAF50",
-            "빨간색": "#F44336",
-            "보라색": "#9C27B0",
+            "파란색": "#2196F3",
         }
         self.color_combo.addItems(list(self.colors.keys()))
         layout.addWidget(PopUpTitle("🎨 일정 색상"))
@@ -252,6 +253,7 @@ class DailyEventRowWidget(QWidget):
         super().__init__()
         self.schedule_data = schedule_data
         self.parent_dialog = parent_dialog
+        is_law = schedule_data.get("is_law", False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -260,6 +262,8 @@ class DailyEventRowWidget(QWidget):
         self.checkbox = QCheckBox()
         self.checkbox.setChecked(schedule_data.get("is_completed", False))
         self.checkbox.toggled.connect(self.on_toggle)
+        if is_law:
+            self.checkbox.hide()
 
         # 2. 제목 라벨 (더블클릭 편집 지원)
         self.title_label = QLabel(schedule_data["title"])
@@ -269,13 +273,11 @@ class DailyEventRowWidget(QWidget):
                 "color: gray; text-decoration: line-through;"
             )
         else:
-            self.title_label.setStyleSheet(
-                f"color: {schedule_data['color']}; font-weight: bold;"
-            )
+            self.title_label.setStyleSheet(f"color: {schedule_data['color']};")
 
         # 3. 삭제 버튼
         self.btn_del = StyledButton("❌", "transparent", "#F44336")
-        self.btn_del.setFixedWidth(30)
+        self.btn_del.setFixedWidth(40)
         self.btn_del.clicked.connect(self.on_delete)
 
         layout.addWidget(self.checkbox)
@@ -283,14 +285,16 @@ class DailyEventRowWidget(QWidget):
         layout.addWidget(self.btn_del)
 
     def mouseDoubleClickEvent(self, event):
-        """빈 공간이나 라벨 더블클릭 시 편집 창 호출"""
-        dialog = EventDialog(
-            self.schedule_data["start_date"],
-            schedule_data=self.schedule_data,
-            parent=self.parent_dialog,
-        )
-        if dialog.exec():
-            self.parent_dialog.refresh_data()
+        if self.schedule_data.get("is_law"):
+            webbrowser.open(self.schedule_data.get("link", ""))
+        else:
+            dialog = EventDialog(
+                self.schedule_data["start_date"],
+                schedule_data=self.schedule_data,
+                parent=self.parent_dialog,
+            )
+            if dialog.exec():
+                self.parent_dialog.refresh_data()
 
     def on_toggle(self, checked):
         s = self.schedule_data
@@ -325,7 +329,7 @@ class DailyEventsDialog(QDialog):
         self.date_str = date_obj.toString("yyyy-MM-dd")
 
         self.setWindowTitle(f"{self.date_str} 일정 목록")
-        self.setFixedSize(320, 400)
+        self.setFixedSize(320, 500)
 
         self.layout = QVBoxLayout(self)
         self.layout.addWidget(TitleLabel(f"📅 {self.date_str} 일정"))
@@ -333,7 +337,7 @@ class DailyEventsDialog(QDialog):
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
             """
-            QListWidget { border: 1px solid #EEEEEE; border-radius: 5px; }
+            QListWidget { border: 1px solid #999999; border-radius: 5px; margin: 10px 0; }
             QListWidget::item { border-bottom: 1px solid #F5F5F5; }
             """
         )
@@ -361,7 +365,14 @@ class DailyEventsDialog(QDialog):
     def load_events(self):
         self.list_widget.clear()
         day_events = []
-        for s in db_manager.get_schedules():
+
+        source_schedules = (
+            self.parent_tab.schedules_cache
+            if self.parent_tab
+            else db_manager.get_schedules()
+        )
+
+        for s in source_schedules:
             if get_instances(s, self.date_obj, self.date_obj):
                 day_events.append(s)
 
@@ -369,18 +380,18 @@ class DailyEventsDialog(QDialog):
 
         for ev in day_events:
             item = QListWidgetItem(self.list_widget)
-            # 커스텀 위젯(DailyEventRowWidget)을 생성하여 리스트 항목에 넣습니다!
             row_widget = DailyEventRowWidget(ev, self)
-
-            # 위젯 크기에 맞게 아이템 높이 조절
             item.setSizeHint(row_widget.sizeHint())
             self.list_widget.setItemWidget(item, row_widget)
 
     def refresh_data(self):
         """데이터 변경 시 팝업 내용과 뒤에 있는 달력 화면을 즉시 동기화합니다."""
-        self.load_events()
         if self.parent_tab:
             self.parent_tab.fetch_data()
+
+        self.load_events()
+
+        if self.parent_tab:
             self.parent_tab.draw_overlays()
 
 
@@ -399,8 +410,12 @@ class ClickableEventLabel(QLabel):
         self.setCursor(Qt.PointingHandCursor)
 
     def mouseDoubleClickEvent(self, event):
-        self.doubleClicked.emit(self.schedule_data)
-        event.accept()
+        if event.button() == Qt.LeftButton:
+            if self.schedule_data.get("is_law"):
+                webbrowser.open(self.schedule_data.get("link", ""))
+            else:
+                self.doubleClicked.emit(self.schedule_data)
+            event.accept()
 
     def contextMenuEvent(self, event):
         """우클릭 시 실행되는 컨텍스트 메뉴입니다."""
@@ -410,6 +425,7 @@ class ClickableEventLabel(QLabel):
             QMenu { 
                 background-color: white; 
                 border: 1px solid #CCCCCC; 
+                padding: 5px;
                 font-size: 13px; 
                 color: black;
                 text-decoration: none; /* 핵심: 부모의 취소선 상속을 차단합니다! */
@@ -439,6 +455,18 @@ class ClickableEventLabel(QLabel):
 
         menu.addSeparator()
 
+        if self.schedule_data.get("is_law"):
+            action_link = menu.addAction("🔗 국가법령정보센터에서 보기")
+
+            original_style = self.styleSheet()
+            self.setStyleSheet(original_style + "border: 2px solid #333333;")
+            action = menu.exec(event.globalPos())
+            self.setStyleSheet(original_style)
+
+            if action == action_link:
+                webbrowser.open(self.schedule_data.get("link", ""))
+            return
+
         is_completed = self.schedule_data.get("is_completed", False)
         status_text = "미완료 처리" if is_completed else "완료 처리"
 
@@ -448,9 +476,7 @@ class ClickableEventLabel(QLabel):
 
         original_style = self.styleSheet()
         self.setStyleSheet(original_style + "border: 2px solid #333333;")
-        # 메뉴를 마우스 위치에 띄우고 선택된 액션을 받습니다.
         action = menu.exec(event.globalPos())
-
         self.setStyleSheet(original_style)
 
         if action == action_toggle:
@@ -476,19 +502,36 @@ class ClickableMoreLabel(QLabel):
             self.clicked.emit(self.date_obj)
 
 
+class ClickableDateLabel(QLabel):
+    clicked = Signal(QDate)
+
+    def __init__(self, date_obj, text, parent=None):
+        super().__init__(text, parent)
+        self.date_obj = date_obj
+        self.setCursor(Qt.PointingHandCursor)  # 마우스 오버 시 손가락 모양
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.date_obj)
+
+
 class CustomCalendarCell(QWidget):
     """표의 배경을 담당하는 셀 (날짜와 '+N 더보기'만 표시)"""
 
     def __init__(self, date_obj, parent_tab):
         super().__init__()
+        self.setAttribute(Qt.WA_StyledBackground, True)
+
         self.date_obj = date_obj
         self.parent_tab = parent_tab
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 2, 0, 2)
 
-        self.date_label = QLabel(str(date_obj.day()))
+        self.date_label = ClickableDateLabel(date_obj, str(date_obj.day()))
         self.date_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
         self.date_label.setContentsMargins(0, 0, 5, 0)
+        self.date_label.clicked.connect(self.parent_tab.show_daily_events)
+
         if date_obj.dayOfWeek() == 7:
             self.date_label.setStyleSheet("color: red;")
         elif date_obj.dayOfWeek() == 6:
@@ -537,14 +580,48 @@ class ScheduleTab(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         nav_layout = QHBoxLayout()
-        self.prev_btn = QPushButton("◀ 이전 달")
-        self.month_label = TitleLabel("")
-        self.next_btn = QPushButton("다음 달 ▶")
+
+        # 오늘 버튼
+        self.today_btn = StyledButton("오늘", "#E3F2FD", "#1976D2")
+
+        # 이전 달 버튼
+        self.prev_btn = StyledButton("◀ 이전 달", "transparent", "#777777")
+
+        self.year_combo = QComboBox()
+        self.month_combo = QComboBox()
+
+        self.year_combo.addItems([f"{y}년" for y in range(2000, 2051)])
+        self.month_combo.addItems([f"{m}월" for m in range(1, 13)])
+
+        combo_style = """
+            QComboBox { 
+                font-size: 16px; 
+                border: 1px solid #DDDDDD; 
+                border-radius: 5px; 
+                padding: 2px 10px; 
+                background-color: white;
+                color: #555555;
+            }
+            QComboBox::drop-down { border: none; }
+        """
+        self.year_combo.setStyleSheet(combo_style)
+        self.month_combo.setStyleSheet(combo_style)
+
+        self.year_combo.currentIndexChanged.connect(self.on_date_combo_changed)
+        self.month_combo.currentIndexChanged.connect(self.on_date_combo_changed)
+
+        # 다음 달 버튼
+        self.next_btn = StyledButton("다음 달 ▶", "transparent", "#777777")
+
+        self.today_btn.clicked.connect(self.go_today)
         self.prev_btn.clicked.connect(self.go_prev_month)
         self.next_btn.clicked.connect(self.go_next_month)
+
         nav_layout.addStretch()
+        nav_layout.addWidget(self.today_btn)
         nav_layout.addWidget(self.prev_btn)
-        nav_layout.addWidget(self.month_label)
+        nav_layout.addWidget(self.year_combo)
+        nav_layout.addWidget(self.month_combo)
         nav_layout.addWidget(self.next_btn)
         nav_layout.addStretch()
         layout.addLayout(nav_layout)
@@ -562,8 +639,7 @@ class ScheduleTab(QWidget):
         self.calendar_table.verticalHeader().setVisible(False)
         self.calendar_table.setStyleSheet(
             """
-            QTableWidget { border: none; gridline-color: #EEEEEE; }
-            QTableWidget::item { border-bottom: 1px solid #EEEEEE; border-right: 1px solid #EEEEEE; }
+            QTableWidget { border: none; gridline-color: #777777; }
             """
         )
 
@@ -574,8 +650,44 @@ class ScheduleTab(QWidget):
         layout.addWidget(self.calendar_table)
 
     def fetch_data(self):
-        """DB에서 데이터를 갱신합니다."""
-        self.schedules_cache = db_manager.get_schedules()
+        """DB 일정과 법령 데이터를 가져와 오버레이용으로 합성합니다."""
+        db_schedules = db_manager.get_schedules()
+
+        # 법령 데이터 캐싱 (반복 로딩으로 인한 UI 멈춤 방지)
+        if not hasattr(self, "laws_schedules"):
+            self.laws_schedules = []
+            try:
+                keywords = db_manager.load_law_keywords()
+                for kw in keywords:
+                    if kw.get("checked", False):
+                        laws = law_scraper.get_law_group_info(kw["text"])
+                        for law in laws:
+                            date_str = law.get("enforce_date", "")
+                            # "YYYY.MM.DD" 형식을 "YYYY-MM-DD"로 변환
+                            if (
+                                date_str
+                                and len(date_str) == 10
+                                and date_str != "정보 없음"
+                            ):
+                                formatted_date = date_str.replace(".", "-")
+                                self.laws_schedules.append(
+                                    {
+                                        "id": f"law_{law['serial']}",
+                                        "title": f"⚖️ {law['name']}",
+                                        "start_date": formatted_date,
+                                        "end_date": formatted_date,
+                                        "repeat_type": "none",
+                                        "color": "#673AB7",  # 세련된 딥 퍼플 색상
+                                        "is_law": True,  # 법령임을 표시하는 특수 플래그
+                                        "link": law.get("link", ""),
+                                    }
+                                )
+            except Exception as e:
+                print(f"법령 데이터 합성에 실패했습니다: {e}")
+
+        # 실제 일정 + 법령 스케줄 합치기
+        self.schedules_cache = db_schedules + self.laws_schedules
+
         # 정렬: 시작일 빠른순 -> 미완료 우선 -> 기간 긴 순
         self.schedules_cache.sort(
             key=lambda x: (
@@ -591,7 +703,15 @@ class ScheduleTab(QWidget):
         """달력의 배경(그리드, 날짜, 휴일)을 세팅합니다."""
         self.calendar_table.clearContents()
         self.date_to_cell.clear()
-        self.month_label.setText(self.current_date.toString("yyyy년 MM월"))
+
+        self.year_combo.blockSignals(True)
+        self.month_combo.blockSignals(True)
+
+        self.year_combo.setCurrentText(f"{self.current_date.year()}년")
+        self.month_combo.setCurrentText(f"{self.current_date.month()}월")
+
+        self.year_combo.blockSignals(False)
+        self.month_combo.blockSignals(False)
 
         year, month = self.current_date.year(), self.current_date.month()
         cache_key = f"{year}-{month:02d}"
@@ -618,16 +738,29 @@ class ScheduleTab(QWidget):
 
                 date_obj = QDate(year, month, current_day)
                 date_str = date_obj.toString("yyyy-MM-dd")
-                self.date_to_cell[date_str] = (row, col)  # 날짜 좌표 기록
+                self.date_to_cell[date_str] = (row, col)
 
                 cell_widget = CustomCalendarCell(date_obj, self)
-                if date_str in monthly_holidays:
+
+                bg_color = "transparent"
+                is_holiday = date_str in monthly_holidays
+
+                if is_holiday:
+                    bg_color = "rgba(255, 193, 204, 0.8)"  # 연한 파스텔 핑크
                     cell_widget.date_label.setStyleSheet(
-                        "color: red; font-weight: bold;"
+                        f"color: red; font-weight: bold;"
                     )
                     cell_widget.date_label.setText(
                         f"{cell_widget.date_label.text()} {monthly_holidays[date_str]}"
                     )
+                elif date_obj.dayOfWeek() == 7:  # 일요일
+                    bg_color = "rgba(255, 193, 204, 0.8)"
+                elif date_obj.dayOfWeek() == 6:  # 토요일
+                    bg_color = "rgba(166, 218, 244, 0.8)"
+
+                cell_widget.setStyleSheet(
+                    f"CustomCalendarCell {{ background-color: {bg_color}; }}"
+                )
 
                 self.calendar_table.setCellWidget(row, col, cell_widget)
                 current_day += 1
@@ -722,8 +855,8 @@ class ScheduleTab(QWidget):
                 bg_color = "rgba(224, 224, 224, 0.6)"
             else:
                 c = QColor(schedule["color"])
-                bg_color = f"rgba({c.red()}, {c.green()}, {c.blue()}, 0.9)"
-            text_color = "#999999" if is_completed else "white"
+                bg_color = f"rgb({c.red()}, {c.green()}, {c.blue()})"
+            text_color = "#999999" if is_completed else "#131313"
             text_decor = "line-through" if is_completed else "none"
 
             for seg in segments:
@@ -740,11 +873,9 @@ class ScheduleTab(QWidget):
 
                 # 여백과 높이 설정
                 x = rect_start.x() + 2
-                y = (
-                    rect_start.y() + 25 + (slot_idx * 20)
-                )  # 날짜 아래 25px부터 시작, 막대당 20px 간격
+                y = rect_start.y() + 25 + (slot_idx * 24)
                 w = rect_end.right() - rect_start.left() - 4
-                h = 18
+                h = 22
 
                 is_first_seg = seg == segments[0]
                 is_last_seg = seg == segments[-1]
@@ -783,7 +914,12 @@ class ScheduleTab(QWidget):
     def on_cell_double_clicked(self, row, col):
         cell_widget = self.calendar_table.cellWidget(row, col)
         if cell_widget:
-            self.show_daily_events(cell_widget.date_obj)
+            date_str = cell_widget.date_obj.toString("yyyy-MM-dd")
+            dialog = EventDialog(date_str, parent=self)
+            if dialog.exec():
+                self.fetch_data()
+                self.draw_overlays()
+            # self.show_daily_events(cell_widget.date_obj)
 
     def edit_existing_event(self, schedule_data):
         dialog = EventDialog(
@@ -823,6 +959,17 @@ class ScheduleTab(QWidget):
             self.fetch_data()
             self.draw_overlays()
 
+    def on_date_combo_changed(self):
+        year_str = self.year_combo.currentText().replace("년", "")
+        month_str = self.month_combo.currentText().replace("월", "")
+
+        self.current_date = QDate(int(year_str), int(month_str), 1)
+        self.build_calendar()
+
+    def go_today(self):
+        self.current_date = QDate.currentDate()
+        self.build_calendar()
+
     def go_prev_month(self):
         self.current_date = self.current_date.addMonths(-1)
         self.build_calendar()
@@ -832,7 +979,6 @@ class ScheduleTab(QWidget):
         self.build_calendar()
 
     def show_daily_events(self, date_obj):
-        """'+N개 더보기' 클릭 시 해당 일자 상세 팝업을 띄웁니다."""
         dialog = DailyEventsDialog(date_obj, parent_tab=self)
         dialog.exec()
 

@@ -9,8 +9,11 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QCheckBox,
     QGraphicsOpacityEffect,
+    QSlider,
+    QPushButton,
+    QApplication,
 )
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
 
 # core module
 from core import data_manager
@@ -28,10 +31,13 @@ class DailyScraper(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("뉴스 법령 스크래퍼")
-        self.resize(1264, 800)
+        # self.resize(1600, 900)
 
         # 설정 데이터 불러오기
         self.settings = data_manager.load_settings()
+
+        if self.settings.get("window_geometry"):
+            self.restoreGeometry(self.settings["window_geometry"])
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -51,13 +57,36 @@ class DailyScraper(QMainWindow):
         self.tabs.addTab(self.law_tab, "⚖️ 법령 개정 알림")
         self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
 
-        bottom_layout = self.setup_footer()
-        layout.addLayout(bottom_layout)
+        opacity_val = self.settings.get("window_opacity", 100)
+        self.setWindowOpacity(opacity_val / 100.0)
+
+        if self.settings.get("always_on_top", False):
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
+        self.footer_widget = self.setup_footer()
+        layout.addWidget(self.footer_widget)
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
+    def closeEvent(self, event):
+        """위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override"""
+
+        settings_to_save = {
+            "window_geometry": self.saveGeometry(),
+            "window_opacity": self.opacity_slider.value(),
+            "always_on_top": self.top_checkbox.isChecked(),
+            "dark_mode": self.settings.get("dark_mode", True),
+            "news_limit": self.settings.get("news_limit", 15),
+        }
+        data_manager.save_settings(settings_to_save)
+
+        event.accept()
+
+        app = QApplication.instance()
+        if app:
+            app.quit()
+
     def on_tab_changed(self, index):
-        """탭 이동 시 필요한 화면의 데이터를 실시간으로 현행화(새로고침)합니다."""
         if index == 0:
             self.dashboard_tab.load_dashboard_data()
         elif index == 3:
@@ -68,41 +97,118 @@ class DailyScraper(QMainWindow):
         self.tabs.setCurrentIndex(index)
 
     def setup_footer(self):
-        """
-        Footer : 다크모드, 윈도우 자동실행
-        """
-        bottom_layout = QHBoxLayout()
+        footer_container = QWidget()
+        bottom_layout = QHBoxLayout(footer_container)
+        bottom_layout.setContentsMargins(5, 5, 5, 5)
 
-        # 테마
+        # 테마 변경
         self.theme_checkbox = QCheckBox()
         self.theme_checkbox.setStyleSheet("padding: 5px;")
 
         is_dark = self.settings.get("dark_mode", True)
+        self.theme_checkbox.setText(" 🌙 " if is_dark else " ☀️ ")
+        qdarktheme.setup_theme("dark" if is_dark else "light")
         self.theme_checkbox.setChecked(is_dark)
         self.theme_checkbox.toggled.connect(self.toggle_theme)
 
         bottom_layout.addWidget(self.theme_checkbox)
 
-        # 저작권
+        # 3. 바탕화면 위젯 모드 버튼
+        self.btn_base_style = """
+        border: none; padding: 5px 10px; border-radius: 5px; margin-left: 10px;
+        """
+        self.widget_btn = QPushButton("🖥️ 바탕화면 위젯 모드")
+        self.widget_btn.setCursor(Qt.PointingHandCursor)
+        self.widget_btn.setStyleSheet(
+            f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
+        )
+        self.widget_btn.clicked.connect(self.toggle_widget_mode)
+        bottom_layout.addWidget(self.widget_btn)
+
         bottom_layout.addStretch()
         copyright_label = QLabel(
             "Copyright 2026. 행정지원과 안민수 All rights reserved."
         )
-        copyright_label.setStyleSheet("color: #555555;")
+        copyright_label.setStyleSheet("color: #555;")
         bottom_layout.addWidget(copyright_label)
         bottom_layout.addStretch()
 
-        # 윈도우 자동실행
-        self.startup_checkbox = QCheckBox("💻 윈도우 시작 시 자동 실행")
-        self.startup_checkbox.setStyleSheet("color: #777777; padding: 5px;")
+        self.top_checkbox = QCheckBox("📌 맨 앞 고정")
+        self.top_checkbox.setStyleSheet("color: #777;")
+        self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
+        self.top_checkbox.toggled.connect(self.toggle_always_on_top)
+        bottom_layout.addWidget(self.top_checkbox)
 
+        # 창 투명도 조절
+        bottom_layout.addWidget(QLabel("  투명도:"))
+        self.opacity_slider = QSlider(Qt.Horizontal)
+        self.opacity_slider.setRange(30, 100)  # 30% ~ 100%
+        self.opacity_slider.setValue(self.settings.get("window_opacity", 100))
+        self.opacity_slider.setFixedWidth(80)
+        self.opacity_slider.setCursor(Qt.PointingHandCursor)
+        self.opacity_slider.valueChanged.connect(
+            lambda v: self.setWindowOpacity(v / 100.0)
+        )
+        bottom_layout.addWidget(self.opacity_slider)
+
+        # 기존 자동 실행 및 설정 버튼
+        self.startup_checkbox = QCheckBox("💻 자동 실행")
         self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
         self.startup_checkbox.toggled.connect(self.toggle_startup)
-
         bottom_layout.addWidget(self.startup_checkbox)
-        self.toggle_theme(is_dark, animate=False)
 
-        return bottom_layout
+        return footer_container
+
+    def toggle_always_on_top(self, checked):
+        flags = self.windowFlags()
+        self.settings["always_on_top"] = checked
+
+        if checked:
+            self.setWindowFlags(flags | Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(flags & ~Qt.WindowStaysOnTopHint)
+        self.show()
+
+    def toggle_widget_mode(self):
+        self.is_widget_mode = getattr(self, "is_widget_mode", False)
+
+        if not self.is_widget_mode:
+            self.is_widget_mode = True
+
+            self.saved_geometry = self.saveGeometry()
+
+            self.tabs.tabBar().hide()
+            self.tabs.setCurrentIndex(3)
+            self.setWindowFlags(
+                Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint | Qt.Tool
+            )
+
+            self.widget_btn.setText("🔙 창 모드 복귀")
+            self.widget_btn.setStyleSheet(
+                f"background: #FFEBEE; color: #D32F2F; {self.btn_base_style}"
+            )
+
+            self.show()
+        else:
+            self.is_widget_mode = False
+
+            self.tabs.tabBar().show()
+
+            flags = Qt.Window
+            if self.top_checkbox.isChecked():
+                flags |= Qt.WindowStaysOnTopHint
+            self.setWindowFlags(flags)
+
+            self.widget_btn.setText("🖥️ 바탕화면 위젯 모드")
+            self.widget_btn.setStyleSheet(
+                f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
+            )
+
+            self.show()
+            QApplication.processEvents()
+
+            if hasattr(self, "saved_geometry"):
+                self.restoreGeometry(self.saved_geometry)
 
     def toggle_startup(self, checked):
         success = startup_manager.set_startup(checked)
@@ -124,13 +230,8 @@ class DailyScraper(QMainWindow):
         theme = "dark" if checked else "light"
         qdarktheme.setup_theme(theme)
 
-        if checked:
-            self.theme_checkbox.setText("🌙")
-        else:
-            self.theme_checkbox.setText("☀️")
-
+        self.theme_checkbox.setText(" 🌙 " if checked else " ☀️ ")
         self.settings["dark_mode"] = checked
-        data_manager.save_settings(self.settings)
 
         if animate:
             self.opacity_effect = QGraphicsOpacityEffect(overlay)

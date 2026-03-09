@@ -1,20 +1,24 @@
-from core import db_manager
+from PySide6.QtCore import QSettings
+
+ORG_NAME = "Insa"
+APP_NAME = "CalendarApp"
 
 
 def load_settings():
-    dark_mode_str = db_manager.get_setting("dark_mode", "1")
-    is_dark_mode = True if dark_mode_str == "1" else False
+    settings = QSettings(ORG_NAME, APP_NAME)
 
-    news_limit_str = db_manager.get_setting("news_limit", "15")
-    news_limit = int(news_limit_str)
-
-    return {"dark_mode": is_dark_mode, "news_limit": news_limit}
+    return {
+        "dark_mode": settings.value("dark_mode", True, type=bool),
+        "news_limit": settings.value("news_limit", 15, type=int),
+        "window_opacity": settings.value("window_opacity", 100, type=int),
+        "always_on_top": settings.value("always_on_top", False, type=bool),
+        "window_geometry": settings.value("window_geometry", None),
+    }
 
 
 def save_settings(settings_dict):
-    if "dark_mode" in settings_dict:
-        db_value = "1" if settings_dict["dark_mode"] else "0"
-        db_manager.set_setting("dark_mode", db_value)
+    settings = QSettings(ORG_NAME, APP_NAME)
 
-    if "news_limit" in settings_dict:
-        db_manager.set_setting("news_limit", str(settings_dict["news_limit"]))
+    for key, value in settings_dict.items():
+        if value is not None:
+            settings.setValue(key, value)
