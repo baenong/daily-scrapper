@@ -39,9 +39,12 @@ class DailyScraper(QMainWindow):
         if self.settings.get("window_geometry"):
             self.restoreGeometry(self.settings["window_geometry"])
 
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+
+        self.main_widget = QWidget()
+        self.main_widget.setObjectName("AppBackground")
+        self.setCentralWidget(self.main_widget)
+        layout = QVBoxLayout(self.main_widget)
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
@@ -57,16 +60,50 @@ class DailyScraper(QMainWindow):
         self.tabs.addTab(self.law_tab, "⚖️ 법령 개정 알림")
         self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
 
-        opacity_val = self.settings.get("window_opacity", 100)
-        self.setWindowOpacity(opacity_val / 100.0)
-
         if self.settings.get("always_on_top", False):
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         self.footer_widget = self.setup_footer()
         layout.addWidget(self.footer_widget)
-
         self.tabs.currentChanged.connect(self.on_tab_changed)
+
+        self.update_background_opacity()
+
+    def update_background_opacity(self, value=None):
+        if value is None:
+            value = self.opacity_slider.value()
+
+        is_widget = getattr(self, "is_widget_mode", False)
+
+        if is_widget:
+            alpha = value / 100.0
+            self.settings["window_opacity"] = value
+        else:
+            alpha = 1.0
+
+        is_dark = self.settings.get("dark_mode", True)
+
+        if is_dark:
+            bg_color = f"rgba(32, 33, 36, {alpha})"
+        else:
+            bg_color = f"rgba(255, 255, 255, {alpha})"
+
+        style = f"""
+            QWidget#AppBackground {{
+                background-color: {bg_color};
+            }}
+            QWidget#FooterContainer {{
+                background-color: transparent;
+            }}
+            QTabWidget::pane {{
+                background-color: transparent;
+                border: none;
+            }}
+            QTabWidget > QWidget {{
+                background-color: transparent;
+            }}
+        """
+        self.setStyleSheet(style)
 
     def closeEvent(self, event):
         """위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override"""
@@ -98,6 +135,7 @@ class DailyScraper(QMainWindow):
 
     def setup_footer(self):
         footer_container = QWidget()
+        footer_container.setObjectName("FooterContainer")
         bottom_layout = QHBoxLayout(footer_container)
         bottom_layout.setContentsMargins(5, 5, 5, 5)
 
@@ -140,16 +178,19 @@ class DailyScraper(QMainWindow):
         bottom_layout.addWidget(self.top_checkbox)
 
         # 창 투명도 조절
-        bottom_layout.addWidget(QLabel("  투명도:"))
+        self.opacity_label = QLabel("  투명도:")
+        bottom_layout.addWidget(self.opacity_label)
+
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(30, 100)  # 30% ~ 100%
         self.opacity_slider.setValue(self.settings.get("window_opacity", 100))
         self.opacity_slider.setFixedWidth(80)
         self.opacity_slider.setCursor(Qt.PointingHandCursor)
-        self.opacity_slider.valueChanged.connect(
-            lambda v: self.setWindowOpacity(v / 100.0)
-        )
+        self.opacity_slider.valueChanged.connect(self.update_background_opacity)
         bottom_layout.addWidget(self.opacity_slider)
+
+        self.opacity_label.hide()
+        self.opacity_slider.hide()
 
         # 기존 자동 실행 및 설정 버튼
         self.startup_checkbox = QCheckBox("💻 자동 실행")
@@ -188,10 +229,13 @@ class DailyScraper(QMainWindow):
                 f"background: #FFEBEE; color: #D32F2F; {self.btn_base_style}"
             )
 
+            self.opacity_label.show()
+            self.opacity_slider.show()
+            self.update_background_opacity()
+
             self.show()
         else:
             self.is_widget_mode = False
-
             self.tabs.tabBar().show()
 
             flags = Qt.Window
@@ -203,6 +247,10 @@ class DailyScraper(QMainWindow):
             self.widget_btn.setStyleSheet(
                 f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
             )
+
+            self.opacity_label.hide()
+            self.opacity_slider.hide()
+            self.update_background_opacity()
 
             self.show()
             QApplication.processEvents()
@@ -232,6 +280,8 @@ class DailyScraper(QMainWindow):
 
         self.theme_checkbox.setText(" 🌙 " if checked else " ☀️ ")
         self.settings["dark_mode"] = checked
+
+        self.update_background_opacity()
 
         if animate:
             self.opacity_effect = QGraphicsOpacityEffect(overlay)

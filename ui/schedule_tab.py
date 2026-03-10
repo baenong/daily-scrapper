@@ -327,12 +327,13 @@ class DailyEventsDialog(QDialog):
         self.date_obj = date_obj
         self.parent_tab = parent_tab
         self.date_str = date_obj.toString("yyyy-MM-dd")
+        self.date_title = date_obj.toString("yyyy. MM. dd")
 
         self.setWindowTitle(f"{self.date_str} 일정 목록")
         self.setFixedSize(320, 500)
 
         self.layout = QVBoxLayout(self)
-        self.layout.addWidget(TitleLabel(f"📅 {self.date_str} 일정"))
+        self.layout.addWidget(TitleLabel(f"📅 {self.date_title}"))
 
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
@@ -345,14 +346,11 @@ class DailyEventsDialog(QDialog):
 
         btn_layout = QHBoxLayout()
 
-        self.add_btn = StyledButton("➕ 신규 일정", "#2196F3")
+        self.add_btn = StyledButton("신규 일정", "#2196F3")
         self.add_btn.clicked.connect(self.add_new_event)
-        close_btn = StyledButton("닫기", "transparent", "#555555")
-        close_btn.clicked.connect(self.accept)
 
-        btn_layout.addWidget(self.add_btn)
         btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
+        btn_layout.addWidget(self.add_btn)
 
         self.layout.addLayout(btn_layout)
         self.load_events()
@@ -639,14 +637,15 @@ class ScheduleTab(QWidget):
         self.calendar_table.verticalHeader().setVisible(False)
         self.calendar_table.setStyleSheet(
             """
-            QTableWidget { border: none; gridline-color: #777777; }
+            QTableWidget { border: none;
+                           gridline-color: #777777;
+                           background-color: transparent; }
+            QTableWidget::item { background-color: transparent; }
             """
         )
-
+        self.calendar_table.viewport().setStyleSheet("background-color: transparent;")
         self.calendar_table.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        self.calendar_table.resized.connect(
-            self.draw_overlays
-        )  # 창 크기 변하면 다시 그리기
+        self.calendar_table.resized.connect(self.draw_overlays)
         layout.addWidget(self.calendar_table)
 
     def fetch_data(self):
@@ -792,8 +791,17 @@ class ScheduleTab(QWidget):
 
         # 3. 슬롯(줄) 겹침 방지 알고리즘
         slot_map = {d: [] for d in self.date_to_cell.keys()}
-        max_slots = 3  # 보여줄 최대 막대 개수
         hidden_counts = {d: 0 for d in self.date_to_cell.keys()}
+
+        table_height = self.calendar_table.viewport().height()
+        rows = self.calendar_table.rowCount()
+
+        if rows > 0:
+            cell_height = table_height / rows
+            available_height = cell_height - 45
+            max_slots = max(1, int(available_height // 24))
+        else:
+            max_slots = 3
 
         for inst in instances:
             s_qdate, e_qdate = inst["start"], inst["end"]
