@@ -56,6 +56,31 @@ def init_db():
                 """
             )
 
+            # 2026. 3. 10. 정책브리핑
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS departments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    rss_url TEXT NOT NULL,
+                    is_checked INTEGER DEFAULT 1
+                )
+                """
+            )
+
+            count = conn.execute("SELECT COUNT(*) FROM departments").fetchone()[0]
+            if count == 0:
+                # ※ korea.kr의 실제 RSS 주소 체계에 맞춰 추후 자유롭게 수정하시면 됩니다.
+                default_departments = [
+                    ("행정안전부", "https://www.korea.kr/rss/dept_mois.xml"),
+                    ("인사혁신처", "https://www.korea.kr/rss/dept_mpm.xml"),
+                ]
+                conn.executemany(
+                    "INSERT INTO departments (name, rss_url, is_checked) VALUES (?, ?, 1)",
+                    default_departments,
+                )
+
+            # Setting
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS app_settings (
@@ -171,6 +196,26 @@ def load_law_keywords():
     with closing(get_connection()) as conn:
         rows = conn.execute("SELECT keyword, is_active FROM law_keywords").fetchall()
         return [{"text": r[0], "checked": bool(r[1])} for r in rows]
+
+
+def load_departments():
+    with closing(get_connection()) as conn:
+        rows = conn.execute(
+            "SELECT id, name, rss_url, is_checked FROM departments"
+        ).fetchall()
+        return [
+            {"id": r[0], "name": r[1], "rss_url": r[2], "checked": bool(r[3])}
+            for r in rows
+        ]
+
+
+def update_department_status(dept_id, is_checked):
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute(
+                "UPDATE departments SET is_checked = ? WHERE id = ?",
+                (int(is_checked), dept_id),
+            )
 
 
 def get_setting(key, default_value=None):

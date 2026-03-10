@@ -121,7 +121,7 @@ class NewsTab(QWidget):
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
 
-        splitter.setSizes([400, 864])
+        splitter.setSizes([400, 1200])
 
     def add_keyword_row(self, text, is_checked):
         row = EditableRowWidget(text, is_checked, self.save_keywords_to_db)

@@ -24,6 +24,7 @@ from ui.dashboard_tab import DashboardTab
 from ui.news_tab import NewsTab
 from ui.law_tab import LawTab
 from ui.schedule_tab import ScheduleTab
+from ui.policy_tab import PolicyTab
 
 
 class DailyScraper(QMainWindow):
@@ -53,11 +54,13 @@ class DailyScraper(QMainWindow):
         self.dashboard_tab = DashboardTab(self.settings, self.go_to_tab)
         self.news_tab = NewsTab(self.settings)
         self.law_tab = LawTab(self.settings)
+        self.policy_tab = PolicyTab(self.settings)
         self.schedule_tab = ScheduleTab(self.settings)
 
         self.tabs.addTab(self.dashboard_tab, "🏠 대시보드")
         self.tabs.addTab(self.news_tab, "📰 뉴스 스크랩")
         self.tabs.addTab(self.law_tab, "⚖️ 법령 개정 알림")
+        self.tabs.addTab(self.policy_tab, "🏛️ 정책 브리핑")
         self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
 
         if self.settings.get("always_on_top", False):
@@ -161,25 +164,14 @@ class DailyScraper(QMainWindow):
             f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
         )
         self.widget_btn.clicked.connect(self.toggle_widget_mode)
-        bottom_layout.addWidget(self.widget_btn)
-
-        bottom_layout.addStretch()
-        copyright_label = QLabel(
-            "Copyright 2026. 행정지원과 안민수 All rights reserved."
-        )
-        copyright_label.setStyleSheet("color: #555;")
-        bottom_layout.addWidget(copyright_label)
-        bottom_layout.addStretch()
 
         self.top_checkbox = QCheckBox("📌 맨 앞 고정")
         self.top_checkbox.setStyleSheet("color: #777;")
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
         self.top_checkbox.toggled.connect(self.toggle_always_on_top)
-        bottom_layout.addWidget(self.top_checkbox)
 
         # 창 투명도 조절
         self.opacity_label = QLabel("  투명도:")
-        bottom_layout.addWidget(self.opacity_label)
 
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(30, 100)  # 30% ~ 100%
@@ -187,6 +179,11 @@ class DailyScraper(QMainWindow):
         self.opacity_slider.setFixedWidth(80)
         self.opacity_slider.setCursor(Qt.PointingHandCursor)
         self.opacity_slider.valueChanged.connect(self.update_background_opacity)
+
+        bottom_layout.addWidget(self.widget_btn)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(self.top_checkbox)
+        bottom_layout.addWidget(self.opacity_label)
         bottom_layout.addWidget(self.opacity_slider)
 
         self.opacity_label.hide()
@@ -219,7 +216,8 @@ class DailyScraper(QMainWindow):
             self.saved_geometry = self.saveGeometry()
 
             self.tabs.tabBar().hide()
-            self.tabs.setCurrentIndex(3)
+            # 다른 탭도 위젯화하면 좋을 지 고민해볼 것
+            self.tabs.setCurrentIndex(4)  # 탭 추가되면 여기도 수정할 것
             self.setWindowFlags(
                 Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint | Qt.Tool
             )

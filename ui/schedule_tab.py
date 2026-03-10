@@ -805,7 +805,7 @@ class ScheduleTab(QWidget):
                     {"schedule": schedule, "start": inst_start, "end": inst_end}
                 )
 
-        # 3. 슬롯(줄) 겹침 방지 알고리즘
+        # 3. 슬롯(줄) 겹침 방지
         slot_map = {d: [] for d in self.date_to_cell.keys()}
         hidden_counts = {d: 0 for d in self.date_to_cell.keys()}
 
@@ -915,8 +915,6 @@ class ScheduleTab(QWidget):
                     border-radius: {r_left} {r_right} {r_right} {r_left};
                 """
                 label.setStyleSheet(style)
-
-                # 🚨 뷰포트(Viewport)를 부모로 설정하여 셀의 경계선을 무시하고 표 위에 띄웁니다!
                 label.setParent(self.calendar_table.viewport())
                 label.setGeometry(x, y, w, h)
 
