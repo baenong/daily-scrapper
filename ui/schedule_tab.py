@@ -23,6 +23,7 @@ from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QColor
 from ui.components import TitleLabel, StyledButton
 from core import db_manager, law_scraper
+from core.worker import AsyncTask
 
 
 def get_holidays(year, month):
@@ -648,46 +649,82 @@ class ScheduleTab(QWidget):
         self.calendar_table.resized.connect(self.draw_overlays)
         layout.addWidget(self.calendar_table)
 
+    def build_calendar(self):
+        """달력을 그리기 위한 시작점: 이전 데이터를 지우고 비동기로 데이터를 요청합니다."""
+        self.calendar_table.clearContents()
+        self.date_to_cell.clear()
+
+        self.year_combo.blockSignals(True)
+        self.month_combo.blockSignals(True)
+        self.year_combo.setCurrentText(f"{self.current_date.year()}년")
+        self.month_combo.setCurrentText(f"{self.current_date.month()}월")
+        self.year_combo.blockSignals(False)
+        self.month_combo.blockSignals(False)
+
+        # 이전 오버레이 모두 제거
+        for w in self.overlay_widgets:
+            w.setParent(None)
+            w.deleteLater()
+
+        self.overlay_widgets.clear()
+        self.fetch_data()
+
     def fetch_data(self):
-        """DB 일정과 법령 데이터를 가져와 오버레이용으로 합성합니다."""
-        db_schedules = db_manager.get_schedules()
+        """DB 일정, 법령, 공휴일 데이터를 백그라운드에서 합성합니다."""
+        year, month = self.current_date.year(), self.current_date.month()
 
-        # 법령 데이터 캐싱 (반복 로딩으로 인한 UI 멈춤 방지)
-        if not hasattr(self, "laws_schedules"):
-            self.laws_schedules = []
-            try:
-                keywords = db_manager.load_law_keywords()
-                for kw in keywords:
-                    if kw.get("checked", False):
-                        laws = law_scraper.get_law_group_info(kw["text"])
-                        for law in laws:
-                            date_str = law.get("enforce_date", "")
-                            # "YYYY.MM.DD" 형식을 "YYYY-MM-DD"로 변환
-                            if (
-                                date_str
-                                and len(date_str) == 10
-                                and date_str != "정보 없음"
-                            ):
-                                formatted_date = date_str.replace(".", "-")
-                                self.laws_schedules.append(
-                                    {
-                                        "id": f"law_{law['serial']}",
-                                        "title": f"⚖️ {law['name']}",
-                                        "start_date": formatted_date,
-                                        "end_date": formatted_date,
-                                        "repeat_type": "none",
-                                        "color": "#673AB7",  # 세련된 딥 퍼플 색상
-                                        "is_law": True,  # 법령임을 표시하는 특수 플래그
-                                        "link": law.get("link", ""),
-                                    }
-                                )
-            except Exception as e:
-                print(f"법령 데이터 합성에 실패했습니다: {e}")
+        self.worker = AsyncTask(self._fetch_schedule_data_in_background, year, month)
+        self.worker.result_ready.connect(self._on_schedule_data_loaded)
+        self.worker.start()
 
-        # 실제 일정 + 법령 스케줄 합치기
-        self.schedules_cache = db_schedules + self.laws_schedules
+    def _fetch_schedule_data_in_background(self, year, month):
+        result = {}
 
-        # 정렬: 시작일 빠른순 -> 미완료 우선 -> 기간 긴 순
+        # 1. 공휴일 로드
+        cache_key = f"{year}-{month:02d}"
+        result["cache_key"] = cache_key
+        result["holidays"] = get_holidays(year, month)
+
+        # 2. 법령 로드
+        laws_schedules = []
+        try:
+            keywords = db_manager.load_law_keywords()
+            for kw in keywords:
+                if kw.get("checked", False):
+                    laws = law_scraper.get_law_group_info(kw["text"])
+                    for law in laws:
+                        date_str = law.get("enforce_date", "")
+                        if date_str and len(date_str) == 10 and date_str != "정보 없음":
+                            formatted_date = date_str.replace(".", "-")
+                            laws_schedules.append(
+                                {
+                                    "id": f"law_{law['serial']}",
+                                    "title": f"⚖️ {law['name']}",
+                                    "start_date": formatted_date,
+                                    "end_date": formatted_date,
+                                    "repeat_type": "none",
+                                    "color": "#673AB7",
+                                    "is_law": True,
+                                    "link": law.get("link", ""),
+                                }
+                            )
+        except Exception:
+            pass
+        result["laws_schedules"] = laws_schedules
+
+        # 3. 로컬 DB 일정 로드
+        result["db_schedules"] = db_manager.get_schedules()
+        return result
+
+    def _on_schedule_data_loaded(self, data):
+        """데이터 로딩이 끝나면 달력 그리드와 오버레이를 한 번에 그립니다."""
+        self.holidays_cache[data["cache_key"]] = data["holidays"]
+        monthly_holidays = data["holidays"]
+
+        self.laws_schedules = data["laws_schedules"]
+        self.schedules_cache = data["db_schedules"] + self.laws_schedules
+
+        # 일정 정렬
         self.schedules_cache.sort(
             key=lambda x: (
                 x["start_date"],
@@ -698,26 +735,8 @@ class ScheduleTab(QWidget):
             )
         )
 
-    def build_calendar(self):
-        """달력의 배경(그리드, 날짜, 휴일)을 세팅합니다."""
-        self.calendar_table.clearContents()
-        self.date_to_cell.clear()
-
-        self.year_combo.blockSignals(True)
-        self.month_combo.blockSignals(True)
-
-        self.year_combo.setCurrentText(f"{self.current_date.year()}년")
-        self.month_combo.setCurrentText(f"{self.current_date.month()}월")
-
-        self.year_combo.blockSignals(False)
-        self.month_combo.blockSignals(False)
-
+        # 달력 그리드(배경) 그리기
         year, month = self.current_date.year(), self.current_date.month()
-        cache_key = f"{year}-{month:02d}"
-        if cache_key not in self.holidays_cache:
-            self.holidays_cache[cache_key] = get_holidays(year, month)
-        monthly_holidays = self.holidays_cache[cache_key]
-
         first_day = QDate(year, month, 1)
         days_in_month = self.current_date.daysInMonth()
         start_day_of_week = first_day.dayOfWeek()
@@ -740,32 +759,29 @@ class ScheduleTab(QWidget):
                 self.date_to_cell[date_str] = (row, col)
 
                 cell_widget = CustomCalendarCell(date_obj, self)
-
                 bg_color = "transparent"
                 is_holiday = date_str in monthly_holidays
 
                 if is_holiday:
-                    bg_color = "rgba(255, 193, 204, 0.8)"  # 연한 파스텔 핑크
+                    bg_color = "rgba(255, 193, 204, 0.8)"
                     cell_widget.date_label.setStyleSheet(
-                        f"color: red; font-weight: bold;"
+                        "color: red; font-weight: bold;"
                     )
                     cell_widget.date_label.setText(
                         f"{cell_widget.date_label.text()} {monthly_holidays[date_str]}"
                     )
-                elif date_obj.dayOfWeek() == 7:  # 일요일
+                elif date_obj.dayOfWeek() == 7:
                     bg_color = "rgba(255, 193, 204, 0.8)"
-                elif date_obj.dayOfWeek() == 6:  # 토요일
+                elif date_obj.dayOfWeek() == 6:
                     bg_color = "rgba(166, 218, 244, 0.8)"
 
                 cell_widget.setStyleSheet(
                     f"CustomCalendarCell {{ background-color: {bg_color}; }}"
                 )
-
                 self.calendar_table.setCellWidget(row, col, cell_widget)
                 current_day += 1
 
-        self.fetch_data()
-        self.draw_overlays()  # 배경 세팅 후 오버레이 그리기
+        self.draw_overlays()
 
     def draw_overlays(self):
         """계산된 좌표 위에 일정 막대를 둥둥 띄웁니다! (구글 캘린더 알고리즘)"""

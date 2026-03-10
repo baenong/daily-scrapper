@@ -17,7 +17,8 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime, timezone
 
-from core import data_manager, news_scraper, db_manager
+from core import news_scraper, db_manager
+from core.worker import AsyncTask
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 
 
@@ -165,29 +166,48 @@ class NewsTab(QWidget):
         self.news_list_view.clear()
         self.news_filter_input.clear()
 
-        try:
-            news_items = news_scraper.get_news_by_query(
-                final_query, limit=self.news_limit.value()
+        self.news_list_view.addItem(
+            "⏳ 구글 뉴스를 검색 중입니다. 잠시만 기다려주세요..."
+        )
+
+        self.worker = AsyncTask(
+            self._fetch_news_in_background, final_query, self.news_limit.value()
+        )
+        self.worker.result_ready.connect(self._on_news_loaded)
+        self.worker.error_occurred.connect(self._on_news_error)
+        self.worker.start()
+
+    def _fetch_news_in_background(self, query, limit):
+        return news_scraper.get_news_by_query(query, limit=limit)
+
+    def _on_news_loaded(self, news_items):
+        """뉴스 로드가 완료되면 UI에 뿌려줍니다."""
+        self.news_list_view.clear()
+        if not news_items:
+            self.news_list_view.addItem("검색 결과가 없습니다.")
+            return
+
+        now = datetime.now(timezone.utc)
+        for news in news_items:
+            display_text = (
+                f"📰 {news['title']}\n{news['source']} 🗓️ {news['published_str']}"
             )
-            if not news_items:
-                self.news_list_view.addItem("검색 결과가 없습니다.")
-                return
+            item = QListWidgetItem(display_text)
+            item.setData(100, news["link"])
 
-            now = datetime.now(timezone.utc)
-            for news in news_items:
-                display_text = (
-                    f"📰 {news['title']}\n{news['source']} 🗓️ {news['published_str']}"
-                )
-                item = QListWidgetItem(display_text)
-                item.setData(100, news["link"])
-
+            try:
                 delta = now - news["published_dt"]
                 if delta.days <= 3:
                     item.setBackground(QColor(255, 0, 0, 30))
+            except TypeError:
+                pass
 
-                self.news_list_view.addItem(item)
-        except Exception as e:
-            return
+            self.news_list_view.addItem(item)
+
+    def _on_news_error(self, error_msg):
+        self.news_list_view.clear()
+        self.news_list_view.addItem("❌ 뉴스 검색 중 오류가 발생했습니다.")
+        print(f"뉴스 로딩 에러: {error_msg}")
 
     def filter_news_list(self):
         keyword = self.news_filter_input.text().strip().lower()

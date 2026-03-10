@@ -1,7 +1,7 @@
 from PySide6.QtCore import QSettings
 
 ORG_NAME = "Insa"
-APP_NAME = "CalendarApp"
+APP_NAME = "DailyScraper"
 
 
 def load_settings():

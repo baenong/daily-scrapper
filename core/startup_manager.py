@@ -15,14 +15,14 @@ def get_executable_path():
 
 def is_startup_enabled():
     try:
-        key = winreg.OpenKey(
+        with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
             winreg.KEY_READ,
-        )
-        winreg.QueryValueEx(key, APP_NAME)
-        winreg.CloseKey(key)
+        ) as key:
+            winreg.QueryValueEx(key, APP_NAME)
+
         return True
     except FileNotFoundError:
         return False
@@ -30,23 +30,21 @@ def is_startup_enabled():
 
 def set_startup(enable=True):
     try:
-        key = winreg.OpenKey(
+        with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
             winreg.KEY_ALL_ACCESS,
-        )
+        ) as key:
+            if enable:
+                exe_path = get_executable_path()
+                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, exe_path)
+            else:
+                try:
+                    winreg.DeleteValue(key, APP_NAME)
+                except FileNotFoundError:
+                    pass
 
-        if enable:
-            exe_path = get_executable_path()
-            winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, exe_path)
-        else:
-            try:
-                winreg.DeleteValue(key, APP_NAME)
-            except FileNotFoundError:
-                pass
-
-        winreg.CloseKey(key)
         return True
     except Exception as e:
         print(f"시작 프로그램 설정 중 오류 발생: {e}")

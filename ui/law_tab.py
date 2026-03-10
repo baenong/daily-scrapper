@@ -15,6 +15,7 @@ from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 from core import law_scraper, db_manager
+from core.worker import AsyncTask
 
 
 class LawTab(QWidget):
@@ -111,27 +112,45 @@ class LawTab(QWidget):
 
     def refresh_laws(self):
         self.law_table.setRowCount(0)
-        all_law_infos = []
-        law_keys = set()
+        self.law_refresh_btn.setEnabled(False)
+        self.law_refresh_btn.setText("⏳ 법령 정보 조회 중...")
 
+        law_names = []
         for i in range(self.law_list_layout.count()):
             item = self.law_list_layout.itemAt(i).widget()
             if isinstance(item, EditableRowWidget) and item.checkbox.isChecked():
                 law_name = item.line_edit.text().strip()
-                if not law_name:
-                    continue
+                if law_name:
+                    law_names.append(law_name)
 
-                infos = law_scraper.get_law_group_info(law_name)
-                if infos:
-                    for info in infos:
-                        unique_key = info.get("serial")
-                        if unique_key not in law_keys:
-                            law_keys.add(unique_key)
-                            all_law_infos.append(info)
+        # 백그라운드 작업 시작
+        self.worker = AsyncTask(self._fetch_laws_in_background, law_names)
+        self.worker.result_ready.connect(self._on_laws_loaded)
+        self.worker.error_occurred.connect(self._on_laws_error)
+        self.worker.start()
+
+    def _fetch_laws_in_background(self, law_names):
+        all_law_infos = []
+        law_keys = set()
+
+        for law_name in law_names:
+            infos = law_scraper.get_law_group_info(law_name)
+            if infos:
+                for info in infos:
+                    unique_key = info.get("serial")
+                    if unique_key not in law_keys:
+                        law_keys.add(unique_key)
+                        all_law_infos.append(info)
 
         all_law_infos.sort(key=lambda x: x["enforce_date"], reverse=True)
-        today_str = datetime.now().strftime("%Y.%m.%d")
+        return all_law_infos
 
+    def _on_laws_loaded(self, all_law_infos):
+        self.law_refresh_btn.setEnabled(True)
+        self.law_refresh_btn.setText("선택 법령 정보 조회")
+        self.law_table.setRowCount(0)
+
+        today_str = datetime.now().strftime("%Y.%m.%d")
         future_color = QColor(255, 0, 0, 30)
         now_color = QColor(255, 0, 0)
 
@@ -148,17 +167,22 @@ class LawTab(QWidget):
             enforce_date = info["enforce_date"]
 
             if enforce_date > today_str and enforce_date != "정보 없음":
-                name_item.setBackground(QBrush(future_color))
-                date_item.setBackground(QBrush(future_color))
+                name_item.setBackground(future_color)
+                date_item.setBackground(future_color)
                 name_item.setText(f"🚀 [시행예정] {info['name']}")
 
             if enforce_date == today_str and enforce_date != "정보 없음":
-                name_item.setBackground(QBrush(now_color))
-                date_item.setBackground(QBrush(now_color))
+                name_item.setBackground(now_color)
+                date_item.setBackground(now_color)
                 name_item.setText(f"🚨 [오늘시행] {info['name']}")
 
             self.law_table.setItem(row, 0, name_item)
             self.law_table.setItem(row, 1, date_item)
+
+    def _on_laws_error(self, error_msg):
+        self.law_refresh_btn.setEnabled(True)
+        self.law_refresh_btn.setText("선택 법령 정보 조회")
+        print(f"법령 로딩 에러: {error_msg}")
 
     def open_law_link(self, item):
         row = item.row()

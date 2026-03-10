@@ -15,6 +15,7 @@ from datetime import datetime
 from ui.components import TitleLabel, StyledButton
 from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper
+from core.worker import AsyncTask
 
 
 class EllipsisLabel(QLabel):
@@ -23,7 +24,6 @@ class EllipsisLabel(QLabel):
     def __init__(self, text):
         super().__init__()
         self._original_text = text
-
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.setStyleSheet("background: transparent; border: none;")
 
@@ -80,7 +80,6 @@ class DashboardCard(QFrame):
         self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         layout.addWidget(self.list_widget)
 
-        # 자세히 보기 버튼
         self.detail_btn = StyledButton(btn_text, "#333333", "#2196F3")
         self.detail_btn.setFixedHeight(40)
         self.detail_btn.clicked.connect(btn_callback)
@@ -102,7 +101,7 @@ class DashboardTab(QWidget):
     def __init__(self, settings, go_to_tab_callback):
         super().__init__()
         self.settings = settings
-        self.go_to_tab = go_to_tab_callback  # 메인 창에서 받아온 탭 이동 '리모컨'
+        self.go_to_tab = go_to_tab_callback
 
         self.setup_ui()
         self.load_dashboard_data()
@@ -123,15 +122,14 @@ class DashboardTab(QWidget):
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
 
-        # 1. 일정 카드 (탭 인덱스 3으로 이동)
         self.todo_card = DashboardCard(
             "📅 오늘의 일정", "일정 탭으로 이동 ➔", lambda: self.go_to_tab(3)
         )
-        # 2. 뉴스 카드 (탭 인덱스 1로 이동)
+
         self.news_card = DashboardCard(
             "📰 최신 관심 뉴스", "뉴스 탭으로 이동 ➔", lambda: self.go_to_tab(1)
         )
-        # 3. 법령 카드 (탭 인덱스 2로 이동)
+
         self.law_card = DashboardCard(
             "🚨 오늘 시행되는 관심 법령",
             "법령 탭으로 이동 ➔",
@@ -146,75 +144,102 @@ class DashboardTab(QWidget):
         layout.addStretch(1)
 
     def load_dashboard_data(self):
-        """각 모듈에서 데이터를 가져와 카드에 요약해서 뿌려줍니다."""
+        """데이터 로딩을 시작하고 UI를 로딩 상태로 변경합니다."""
+        self.todo_card.list_widget.clear()
+        self.news_card.list_widget.clear()
+        self.law_card.list_widget.clear()
+
+        self.todo_card.add_item("⏳ 데이터 불러오는 중...")
+        self.news_card.add_item("⏳ 데이터 불러오는 중...")
+        self.law_card.add_item("⏳ 데이터 불러오는 중...")
+
+        # 백그라운드 스레드 생성 및 실행
+        self.worker = AsyncTask(self._fetch_data_in_background)
+        self.worker.result_ready.connect(self._on_data_loaded)
+        self.worker.error_occurred.connect(self._on_data_error)
+        self.worker.start()
+
+    def _fetch_data_in_background(self):
+        """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
+        result = {"todos": [], "news": [], "laws": []}
+
         today_qdate = QDate.currentDate()
         today_str_law = datetime.now().strftime("%Y.%m.%d")
 
-        # 1. 일정 로드 (수정된 부분)
-        self.todo_card.list_widget.clear()
+        # 1. 일정 데이터 수집
         all_schedules = db_manager.get_schedules()
-        today_events = []
-
-        # 오늘 날짜에 걸쳐있는 모든 일정을 찾습니다.
         for s in all_schedules:
-            instances = get_instances(s, today_qdate, today_qdate)
-            if instances:
-                today_events.append(s)
+            if get_instances(s, today_qdate, today_qdate):
+                result["todos"].append(s)
+        result["todos"].sort(key=lambda x: x.get("is_completed", False))
 
-        # 미완료 일정이 위로 오도록 정렬합니다.
-        today_events.sort(key=lambda x: x.get("is_completed", False))
-
-        if not today_events:
-            self.todo_card.add_item("❌ 오늘 등록된 일정이 없습니다.")
-        else:
-            for t in today_events[:5]:  # 최대 5개만 표시
-                is_comp = t.get("is_completed", False)
-                prefix = "✅ " if is_comp else "✏️ "
-
-                item = QListWidgetItem(prefix + t["title"])
-                if is_comp:
-                    item.setForeground(Qt.gray)
-
-                self.todo_card.list_widget.addItem(item)
-
-        # 2. 뉴스 로드
-        self.news_card.list_widget.clear()
+        # 2. 뉴스 데이터 수집
         db_news_kws = db_manager.load_news_keywords()
-        keywords = [kw["text"] for kw in db_news_kws if kw.get("checked", True)]
-
-        if not keywords:
-            self.news_card.add_item("설정된 뉴스 키워드가 없습니다.")
-        else:
-            final_query = " ".join(keywords)  # AND 조건이라 가정
+        news_keywords = [kw["text"] for kw in db_news_kws if kw.get("checked", True)]
+        if news_keywords:
+            final_query = " ".join(news_keywords)
             try:
-                news_items = news_scraper.get_news_by_query(final_query, limit=5)
-                if news_items:
-                    for news in news_items:
-                        self.news_card.add_item(f"• {news['title']}", use_ellipsis=True)
-                else:
-                    self.news_card.add_item("관련 뉴스가 없습니다.")
+                result["news"] = news_scraper.get_news_by_query(final_query, limit=5)
             except Exception:
-                self.news_card.add_item("뉴스 로드 중 오류 발생")
+                pass
 
-        # 3. 법령 로드
-        self.law_card.list_widget.clear()
+        # 3. 법령 데이터 수집
         db_law_kws = db_manager.load_law_keywords()
-        laws = [law["text"] for law in db_law_kws if law.get("checked", True)]
-
-        if not laws:
-            self.law_card.add_item("설정된 법령 키워드가 없습니다.")
-        else:
+        law_keywords = [law["text"] for law in db_law_kws if law.get("checked", True)]
+        if law_keywords:
             today_laws = []
-            for law_name in laws:
+            for law_name in law_keywords:
                 infos = law_scraper.get_law_group_info(law_name)
                 if infos:
                     for info in infos:
                         if info["enforce_date"] == today_str_law:
                             today_laws.append(info["name"])
+            result["laws"] = list(set(today_laws))
 
-            today_laws = list(set(today_laws))  # 중복 제거
-            if today_laws:
-                for name in today_laws[:5]:
-                    self.law_card.add_item(f"• {name}", use_ellipsis=True)
-            else:
-                self.law_card.add_item("❌ 오늘 시행/개정되는 법령이 없습니다.")
+        return result
+
+    def _on_data_loaded(self, data):
+        """백그라운드 작업이 끝나면 신호를 받아 UI를 업데이트합니다."""
+        # 1. 일정 업데이트
+        self.todo_card.list_widget.clear()
+        if not data["todos"]:
+            self.todo_card.add_item("❌ 오늘 등록된 일정이 없습니다.")
+        else:
+            for t in data["todos"][:5]:
+                is_comp = t.get("is_completed", False)
+                prefix = "✅ " if is_comp else "✏️ "
+                item = QListWidgetItem(prefix + t["title"])
+                if is_comp:
+                    item.setForeground(Qt.gray)
+                self.todo_card.list_widget.addItem(item)
+
+        # 2. 뉴스 업데이트
+        self.news_card.list_widget.clear()
+        if not data["news"] and not db_manager.load_news_keywords():
+            self.news_card.add_item("설정된 뉴스 키워드가 없습니다.")
+        elif not data["news"]:
+            self.news_card.add_item("관련 뉴스가 없습니다.")
+        else:
+            for news in data["news"]:
+                self.news_card.add_item(f"• {news['title']}", use_ellipsis=True)
+
+        # 3. 법령 업데이트
+        self.law_card.list_widget.clear()
+        if not data["laws"] and not db_manager.load_law_keywords():
+            self.law_card.add_item("설정된 법령 키워드가 없습니다.")
+        elif not data["laws"]:
+            self.law_card.add_item("❌ 오늘 시행/개정되는 법령이 없습니다.")
+        else:
+            for name in data["laws"][:5]:
+                self.law_card.add_item(f"• {name}", use_ellipsis=True)
+
+    def _on_data_error(self, error_msg):
+        """데이터 로딩 중 에러가 발생했을 때의 처리입니다."""
+        self.todo_card.list_widget.clear()
+        self.news_card.list_widget.clear()
+        self.law_card.list_widget.clear()
+
+        self.todo_card.add_item("데이터 로드 실패")
+        self.news_card.add_item("데이터 로드 실패")
+        self.law_card.add_item("데이터 로드 실패")
+        print(f"대시보드 로딩 에러: {error_msg}")

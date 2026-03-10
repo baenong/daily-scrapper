@@ -19,7 +19,7 @@ class StyledButton(QPushButton):
     text_color: (default: white) 글자색
     """
 
-    def __init__(self, text, bg_color_hex, text_color="white"):
+    def __init__(self, text, bg_color_hex, text_color=None):
         super().__init__(text)
 
         self.setCursor(Qt.PointingHandCursor)
