@@ -50,9 +50,14 @@ class NewsTab(QWidget):
 
         self.radio_and = QRadioButton("AND")
         self.radio_or = QRadioButton("OR")
-        self.radio_and.setChecked(True)
+        is_and_checked = self.settings.get("news_cond_and", True)
+
+        self.radio_and.setChecked(is_and_checked)
+        self.radio_or.setChecked(not is_and_checked)
         self.radio_and.setFixedWidth(55)
         self.radio_or.setFixedWidth(55)
+
+        self.radio_and.toggled.connect(self.change_news_condition)
 
         btn_group = QButtonGroup(self)
         btn_group.addButton(self.radio_and)
@@ -123,6 +128,9 @@ class NewsTab(QWidget):
 
         splitter.setSizes([400, 1200])
 
+    def change_news_condition(self, checked):
+        self.settings["news_cond_and"] = checked
+
     def add_keyword_row(self, text, is_checked):
         row = EditableRowWidget(text, is_checked, self.save_keywords_to_db)
         self.keyword_list_layout.addWidget(row)
@@ -171,7 +179,10 @@ class NewsTab(QWidget):
         )
 
         self.worker = AsyncTask(
-            self._fetch_news_in_background, final_query, self.news_limit.value()
+            self._fetch_news_in_background,
+            final_query,
+            self.news_limit.value(),
+            parent=self,
         )
         self.worker.result_ready.connect(self._on_news_loaded)
         self.worker.error_occurred.connect(self._on_news_error)

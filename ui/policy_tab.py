@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QCheckBox,
     QLineEdit,
+    QComboBox,
 )
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
@@ -22,6 +23,7 @@ class PolicyTab(QWidget):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+        self.departments = db_manager.load_departments()
         self.department_checkboxes = []  # 체크박스 객체 보관용
         self.setup_ui()
         self.search_policy()
@@ -71,11 +73,17 @@ class PolicyTab(QWidget):
         )
 
         filter_layout = QHBoxLayout()
+
+        self.dept_combo = QComboBox()
+        self.dept_combo.setMinimumWidth(120)
+        self.dept_combo.currentTextChanged.connect(self.filter_policy_list)
+
         self.policy_filter_input = QLineEdit()
         self.policy_filter_input.setPlaceholderText("🔍 결과 내 검색 (제목 등)")
         self.policy_filter_input.setStyleSheet("padding: 5px; border-radius: 4px;")
         self.policy_filter_input.textChanged.connect(self.filter_policy_list)
 
+        filter_layout.addWidget(self.dept_combo)
         filter_layout.addWidget(self.policy_filter_input)
         right_layout.addLayout(filter_layout)
 
@@ -88,30 +96,35 @@ class PolicyTab(QWidget):
         splitter.setSizes([400, 1200])
 
     def load_department_checkboxes(self):
-        departments = db_manager.load_departments()
-        for dept in departments:
+        for dept in self.departments:
             cb = QCheckBox(dept["name"])
             cb.setChecked(dept["checked"])
-            # 체크박스 상태 변경 시 즉시 DB에 저장
+
             cb.toggled.connect(
                 lambda checked, d_id=dept["id"]: db_manager.update_department_status(
                     d_id, checked
                 )
             )
 
-            # 나중에 파싱을 위해 객체에 url 정보를 몰래 담아둡니다
             cb.setProperty("rss_url", dept["rss_url"])
 
             self.dept_list_layout.addWidget(cb)
             self.department_checkboxes.append(cb)
 
     def search_policy(self):
-        # 1. 체크된 부처의 RSS URL들만 수집
-        selected_urls = [
-            cb.property("rss_url")
-            for cb in self.department_checkboxes
-            if cb.isChecked()
-        ]
+        selected_urls = []
+        selected_names = []
+
+        for cb in self.department_checkboxes:
+            if cb.isChecked():
+                selected_urls.append(cb.property("rss_url"))
+                selected_names.append(cb.text())
+
+        self.dept_combo.blockSignals(True)
+        self.dept_combo.clear()
+        self.dept_combo.addItem("전체")
+        self.dept_combo.addItems(selected_names)
+        self.dept_combo.blockSignals(False)
 
         self.policy_list_view.clear()
 
@@ -125,8 +138,10 @@ class PolicyTab(QWidget):
             "⏳ 선택한 부처들의 정책브리핑을 모아오고 있습니다..."
         )
 
-        # 2. 🚀 비동기 백그라운드 호출
-        self.worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
+        # 2. 비동기 백그라운드 호출
+        self.worker = AsyncTask(
+            self._fetch_policy_in_background, selected_urls, parent=self
+        )
         self.worker.result_ready.connect(self._on_policy_loaded)
         self.worker.error_occurred.connect(self._on_policy_error)
         self.worker.start()
@@ -153,8 +168,8 @@ class PolicyTab(QWidget):
 
             try:
                 delta = now - entry["published_dt"]
-                if delta.days <= 2:  # 2일 이내의 매우 최신 브리핑은 배경색 강조
-                    item.setBackground(QColor(33, 150, 243, 30))  # 연한 파란색
+                if delta.days <= 2:
+                    item.setBackground(QColor(33, 150, 243, 30))
             except TypeError:
                 pass
 
@@ -168,11 +183,19 @@ class PolicyTab(QWidget):
         print(f"정책브리핑 로딩 에러: {error_msg}")
 
     def filter_policy_list(self):
+        filter_dept = self.dept_combo.currentText()
+        if filter_dept == "전체":
+            filter_dept = ""
+        else:
+            filter_dept = filter_dept.lower()
+
         keyword = self.policy_filter_input.text().strip().lower()
+
         for i in range(self.policy_list_view.count()):
             item = self.policy_list_view.item(i)
             item_text = item.text().lower()
-            if keyword in item_text:
+
+            if (filter_dept in item_text) and (keyword in item_text):
                 item.setHidden(False)
             else:
                 item.setHidden(True)

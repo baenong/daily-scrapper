@@ -124,7 +124,7 @@ class LawTab(QWidget):
                     law_names.append(law_name)
 
         # 백그라운드 작업 시작
-        self.worker = AsyncTask(self._fetch_laws_in_background, law_names)
+        self.worker = AsyncTask(self._fetch_laws_in_background, law_names, parent=self)
         self.worker.result_ready.connect(self._on_laws_loaded)
         self.worker.error_occurred.connect(self._on_laws_error)
         self.worker.start()

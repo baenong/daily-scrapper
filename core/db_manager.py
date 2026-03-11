@@ -72,11 +72,35 @@ def init_db():
             if count == 0:
                 # ※ korea.kr의 실제 RSS 주소 체계에 맞춰 추후 자유롭게 수정하시면 됩니다.
                 default_departments = [
+                    ("정책뉴스", "https://www.korea.kr/rss/policy.xml"),
+                    ("보도자료", "https://www.korea.kr/rss/pressrelease.xml"),
                     ("행정안전부", "https://www.korea.kr/rss/dept_mois.xml"),
                     ("인사혁신처", "https://www.korea.kr/rss/dept_mpm.xml"),
+                    ("국무조정실", "https://www.korea.kr/rss/dept_opm.xml"),
+                    ("재정경제부", "https://www.korea.kr/rss/dept_moef.xml"),
+                    ("과학기술정보통신부", "https://www.korea.kr/rss/dept_msit.xml"),
+                    ("교육부", "https://www.korea.kr/rss/dept_moe.xml"),
+                    ("외교부", "https://www.korea.kr/rss/dept_mofa.xml"),
+                    ("통일부", "https://www.korea.kr/rss/dept_unikorea.xml"),
+                    ("법무부", "https://www.korea.kr/rss/dept_moj.xml"),
+                    ("국방부", "https://www.korea.kr/rss/dept_mnd.xml"),
+                    ("국가보훈부", "https://www.korea.kr/rss/dept_mpva.xml"),
+                    ("문화체육관광부", "https://www.korea.kr/rss/dept_mcst.xml"),
+                    ("농림축산식품부", "https://www.korea.kr/rss/dept_mafra.xml"),
+                    ("산업통상부", "https://www.korea.kr/rss/dept_motir.xml"),
+                    ("보건복지부", "https://www.korea.kr/rss/dept_mw.xml"),
+                    ("기후에너지환경부", "https://www.korea.kr/rss/dept_mcee.xml"),
+                    ("고용노동부", "https://www.korea.kr/rss/dept_moel.xml"),
+                    ("성평등가족부", "https://www.korea.kr/rss/dept_mogef.xml"),
+                    ("국토교통부", "https://www.korea.kr/rss/dept_molit.xml"),
+                    ("해양수산부", "https://www.korea.kr/rss/dept_mof.xml"),
+                    ("중소벤처기업부", "https://www.korea.kr/rss/dept_mss.xml"),
+                    ("기획예산처", "https://www.korea.kr/rss/dept_mpb.xml"),
+                    ("식품의약품안전처", "https://www.korea.kr/rss/dept_mfds.xml"),
+                    ("국가데이터처", "https://www.korea.kr/rss/dept_mods.xml"),
                 ]
                 conn.executemany(
-                    "INSERT INTO departments (name, rss_url, is_checked) VALUES (?, ?, 1)",
+                    "INSERT INTO departments (name, rss_url, is_checked) VALUES (?, ?, 0)",
                     default_departments,
                 )
 

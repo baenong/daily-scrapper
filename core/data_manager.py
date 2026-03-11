@@ -10,6 +10,7 @@ def load_settings():
     return {
         "dark_mode": settings.value("dark_mode", True, type=bool),
         "news_limit": settings.value("news_limit", 15, type=int),
+        "news_cond_and": settings.value("news_cond_and", True, type=bool),
         "window_opacity": settings.value("window_opacity", 100, type=int),
         "always_on_top": settings.value("always_on_top", False, type=bool),
         "window_geometry": settings.value("window_geometry", None),

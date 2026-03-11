@@ -14,7 +14,7 @@ from datetime import datetime
 # 공통 부품 및 코어 모듈 불러오기
 from ui.components import TitleLabel, StyledButton
 from ui.schedule_tab import get_instances
-from core import db_manager, news_scraper, law_scraper
+from core import db_manager, news_scraper, law_scraper, policy_scraper
 from core.worker import AsyncTask
 
 
@@ -123,21 +123,24 @@ class DashboardTab(QWidget):
         cards_layout.setSpacing(15)
 
         self.todo_card = DashboardCard(
-            "📅 오늘의 일정", "일정 탭으로 이동 ➔", lambda: self.go_to_tab(3)
+            "📅 오늘의 일정", "일정 탭으로 이동 ➔", lambda: self.go_to_tab(4)
         )
 
         self.news_card = DashboardCard(
             "📰 최신 관심 뉴스", "뉴스 탭으로 이동 ➔", lambda: self.go_to_tab(1)
         )
 
+        self.policy_card = DashboardCard(
+            "🏛️ 최신 정책 브리핑", "브리핑 탭으로 이동 →", lambda: self.go_to_tab(3)
+        )
+
         self.law_card = DashboardCard(
-            "🚨 오늘 시행되는 관심 법령",
-            "법령 탭으로 이동 ➔",
-            lambda: self.go_to_tab(2),
+            "🚨 오늘 시행 법령", "법령 탭으로 이동 ➔", lambda: self.go_to_tab(2)
         )
 
         cards_layout.addWidget(self.todo_card)
         cards_layout.addWidget(self.news_card)
+        cards_layout.addWidget(self.policy_card)
         cards_layout.addWidget(self.law_card)
 
         layout.addLayout(cards_layout)
@@ -147,21 +150,23 @@ class DashboardTab(QWidget):
         """데이터 로딩을 시작하고 UI를 로딩 상태로 변경합니다."""
         self.todo_card.list_widget.clear()
         self.news_card.list_widget.clear()
+        self.policy_card.list_widget.clear()
         self.law_card.list_widget.clear()
 
         self.todo_card.add_item("⏳ 데이터 불러오는 중...")
         self.news_card.add_item("⏳ 데이터 불러오는 중...")
+        self.policy_card.add_item("⏳ 데이터 불러오는 중...")
         self.law_card.add_item("⏳ 데이터 불러오는 중...")
 
         # 백그라운드 스레드 생성 및 실행
-        self.worker = AsyncTask(self._fetch_data_in_background)
+        self.worker = AsyncTask(self._fetch_data_in_background, parent=self)
         self.worker.result_ready.connect(self._on_data_loaded)
         self.worker.error_occurred.connect(self._on_data_error)
         self.worker.start()
 
     def _fetch_data_in_background(self):
         """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
-        result = {"todos": [], "news": [], "laws": []}
+        result = {"todos": [], "news": [], "policy": [], "laws": []}
 
         today_qdate = QDate.currentDate()
         today_str_law = datetime.now().strftime("%Y.%m.%d")
@@ -175,15 +180,41 @@ class DashboardTab(QWidget):
 
         # 2. 뉴스 데이터 수집
         db_news_kws = db_manager.load_news_keywords()
-        news_keywords = [kw["text"] for kw in db_news_kws if kw.get("checked", True)]
-        if news_keywords:
-            final_query = " ".join(news_keywords)
+
+        selected_groups = []
+        for kw in db_news_kws:
+            if kw.get("checked", True):
+                words = [w.strip() for w in kw["text"].split(",") if w.strip()]
+                if words:
+                    selected_groups.append(" ".join(words))
+
+        if selected_groups:
+            is_and_cond = self.settings.get("news_cond_and", True)
+
+            if is_and_cond:
+                final_query = " ".join(selected_groups)
+            else:
+                or_parts = [f"({g})" for g in selected_groups]
+                final_query = " OR ".join(or_parts)
+
             try:
                 result["news"] = news_scraper.get_news_by_query(final_query, limit=5)
             except Exception:
                 pass
 
-        # 3. 법령 데이터 수집
+        # 3. 정책 브리핑 데이터 수집
+        db_policy_kws = db_manager.load_departments()
+        rss_urls = [kw["rss_url"] for kw in db_policy_kws if kw.get("checked", True)]
+
+        if rss_urls:
+            try:
+                result["policy"] = policy_scraper.get_policy_briefings(
+                    rss_urls, limit=5
+                )
+            except Exception:
+                pass
+
+        # 4. 법령 데이터 수집
         db_law_kws = db_manager.load_law_keywords()
         law_keywords = [law["text"] for law in db_law_kws if law.get("checked", True)]
         if law_keywords:
@@ -223,7 +254,15 @@ class DashboardTab(QWidget):
             for news in data["news"]:
                 self.news_card.add_item(f"• {news['title']}", use_ellipsis=True)
 
-        # 3. 법령 업데이트
+        # 3. 정책 브리핑 업데이트
+        self.policy_card.list_widget.clear()
+        if not data["policy"]:
+            self.policy_card.add_item("신규 정책 브리핑이 없습니다.")
+        else:
+            for policy in data["policy"]:
+                self.policy_card.add_item(f"• {policy['title']}", use_ellipsis=True)
+
+        # 4. 법령 업데이트
         self.law_card.list_widget.clear()
         if not data["laws"] and not db_manager.load_law_keywords():
             self.law_card.add_item("설정된 법령 키워드가 없습니다.")

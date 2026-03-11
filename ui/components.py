@@ -19,7 +19,7 @@ class StyledButton(QPushButton):
     text_color: (default: white) 글자색
     """
 
-    def __init__(self, text, bg_color_hex, text_color=None):
+    def __init__(self, text, bg_color_hex, text_color=None, padding="5px 10px"):
         super().__init__(text)
 
         self.setCursor(Qt.PointingHandCursor)
@@ -54,7 +54,7 @@ class StyledButton(QPushButton):
                 color: {final_text_color};
                 border: none;
                 border-radius: 4px;
-                padding: 5px 10px;
+                padding: {padding};
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};

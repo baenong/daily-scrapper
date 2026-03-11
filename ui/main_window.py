@@ -117,6 +117,7 @@ class DailyScraper(QMainWindow):
             "always_on_top": self.top_checkbox.isChecked(),
             "dark_mode": self.settings.get("dark_mode", True),
             "news_limit": self.settings.get("news_limit", 15),
+            "news_cond_and": self.settings.get("news_cond_and", True),
         }
         data_manager.save_settings(settings_to_save)
 
