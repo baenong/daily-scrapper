@@ -640,12 +640,11 @@ class ScheduleTab(QWidget):
 
         combo_style = """
             QComboBox { 
-                font-size: 16px; 
+                font-size: 14px; 
                 border: 1px solid #DDDDDD; 
                 border-radius: 5px; 
                 padding: 2px 10px; 
-                background-color: white;
-                color: #555555;
+                background-color: transparent;
             }
             QComboBox::drop-down { border: none; }
         """

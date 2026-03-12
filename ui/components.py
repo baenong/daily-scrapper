@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import (
+    QVBoxLayout,
     QPushButton,
     QLineEdit,
     QLabel,
@@ -150,3 +151,23 @@ class EditableRowWidget(QWidget):
         self.setParent(None)
         self.deleteLater()
         self.save_callback()
+
+
+class ArticleItemWidget(QWidget):
+    """뉴스와 정책브리핑 리스트에 사용할 수 있는 커스템 위젯"""
+
+    def __init__(self, title, source, pub_date, icon=""):
+        super().__init__()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 8, 5, 8)
+        layout.setSpacing(8)
+
+        self.title_label = QLabel(f"{icon} {title}")
+        self.title_label.setStyleSheet("font-size: 14px;")
+
+        self.meta_label = QLabel(f"[{source}]  🗓️ {pub_date}")
+        self.meta_label.setStyleSheet("font-size: 13px; color: #777777;")
+
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.meta_label)

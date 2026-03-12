@@ -1,4 +1,6 @@
+import keyboard
 import qdarktheme
+from PySide6.QtGui import QMouseEvent, QAction
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -12,8 +14,11 @@ from PySide6.QtWidgets import (
     QSlider,
     QPushButton,
     QApplication,
+    QSizeGrip,
+    QSystemTrayIcon,
+    QMenu,
 )
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt, Signal, QObject
 
 # core module
 from core import data_manager
@@ -27,9 +32,17 @@ from ui.schedule_tab import ScheduleTab
 from ui.policy_tab import PolicyTab
 
 
+class HotKeySignal(QObject):
+    activated = Signal()
+
+
 class DailyScraper(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.is_widget_mode = False
+        self.drag_pos = None
+        self.is_quitting = False
 
         self.setWindowTitle("뉴스 법령 스크래퍼")
         # self.resize(1600, 900)
@@ -70,72 +83,17 @@ class DailyScraper(QMainWindow):
         layout.addWidget(self.footer_widget)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
+        # 투명도 설정
         self.update_background_opacity()
 
-    def update_background_opacity(self, value=None):
-        if value is None:
-            value = self.opacity_slider.value()
+        # 글로벌 단축키
+        self.hotkey_signal = HotKeySignal()
+        self.hotkey_signal.activated.connect(self.bring_to_front)
 
-        is_widget = getattr(self, "is_widget_mode", False)
+        keyboard.add_hotkey("ctrl+shift+space", self.hotkey_signal.activated.emit)
 
-        if is_widget:
-            alpha = value / 100.0
-            self.settings["window_opacity"] = value
-        else:
-            alpha = 1.0
-
-        is_dark = self.settings.get("dark_mode", True)
-
-        if is_dark:
-            bg_color = f"rgba(32, 33, 36, {alpha})"
-        else:
-            bg_color = f"rgba(255, 255, 255, {alpha})"
-
-        style = f"""
-            QWidget#AppBackground {{
-                background-color: {bg_color};
-            }}
-            QWidget#FooterContainer {{
-                background-color: transparent;
-            }}
-            QTabWidget::pane {{
-                background-color: transparent;
-                border: none;
-            }}
-            QTabWidget > QWidget {{
-                background-color: transparent;
-            }}
-        """
-        self.setStyleSheet(style)
-
-    def closeEvent(self, event):
-        """위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override"""
-
-        settings_to_save = {
-            "window_geometry": self.saveGeometry(),
-            "window_opacity": self.opacity_slider.value(),
-            "always_on_top": self.top_checkbox.isChecked(),
-            "dark_mode": self.settings.get("dark_mode", True),
-            "news_limit": self.settings.get("news_limit", 15),
-            "news_cond_and": self.settings.get("news_cond_and", True),
-        }
-        data_manager.save_settings(settings_to_save)
-
-        event.accept()
-
-        app = QApplication.instance()
-        if app:
-            app.quit()
-
-    def on_tab_changed(self, index):
-        if index == 0:
-            self.dashboard_tab.load_dashboard_data()
-        elif index == 3:
-            self.schedule_tab.fetch_data()
-            self.schedule_tab.draw_overlays()
-
-    def go_to_tab(self, index):
-        self.tabs.setCurrentIndex(index)
+        # 시스템 트레이
+        self.setup_tray_icon()
 
     def setup_footer(self):
         footer_container = QWidget()
@@ -196,7 +154,56 @@ class DailyScraper(QMainWindow):
         self.startup_checkbox.toggled.connect(self.toggle_startup)
         bottom_layout.addWidget(self.startup_checkbox)
 
+        # Size Grip
+        self.size_grip = QSizeGrip(self)
+        self.size_grip.setFixedSize(16, 16)
+        self.size_grip.setStyleSheet("background-color: transparent;")
+        bottom_layout.addWidget(self.size_grip, 0, Qt.AlignBottom | Qt.AlignRight)
+        self.size_grip.hide()
+
         return footer_container
+
+    def setup_tray_icon(self):
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(self.windowIcon())
+        self.tray_icon.setToolTip("Daily Scraper")
+
+        tray_menu = QMenu()
+
+        open_action = QAction("다시 열기", self)
+        open_action.triggered.connect(self.bring_to_front)
+
+        tray_menu.addAction(open_action)
+        tray_menu.addSeparator()
+
+        exit_action = QAction("프로그램 종료", self)
+        exit_action.triggered.connect(self.quit_app)
+
+        tray_menu.addAction(exit_action)
+        self.tray_icon.setContextMenu(tray_menu)
+
+        self.tray_icon.activated.connect(self.on_tray_activated)
+        self.tray_icon.show()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self.is_widget_mode and event.button() == Qt.LeftButton:
+            self.drag_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self.is_widget_mode
+            and event.buttons() == Qt.LeftButton
+            and self.drag_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self.drag_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
 
     def toggle_always_on_top(self, checked):
         flags = self.windowFlags()
@@ -209,16 +216,16 @@ class DailyScraper(QMainWindow):
         self.show()
 
     def toggle_widget_mode(self):
-        self.is_widget_mode = getattr(self, "is_widget_mode", False)
+        # self.is_widget_mode = getattr(self, "is_widget_mode", False)
 
         if not self.is_widget_mode:
             self.is_widget_mode = True
-
             self.saved_geometry = self.saveGeometry()
 
-            self.tabs.tabBar().hide()
+            # self.tabs.tabBar().hide()
             # 다른 탭도 위젯화하면 좋을 지 고민해볼 것
-            self.tabs.setCurrentIndex(4)  # 탭 추가되면 여기도 수정할 것
+            # self.tabs.setCurrentIndex(4)  # 탭 추가되면 여기도 수정할 것
+
             self.setWindowFlags(
                 Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint | Qt.Tool
             )
@@ -230,12 +237,13 @@ class DailyScraper(QMainWindow):
 
             self.opacity_label.show()
             self.opacity_slider.show()
+            self.size_grip.show()
             self.update_background_opacity()
 
             self.show()
         else:
             self.is_widget_mode = False
-            self.tabs.tabBar().show()
+            # self.tabs.tabBar().show()
 
             flags = Qt.Window
             if self.top_checkbox.isChecked():
@@ -249,6 +257,7 @@ class DailyScraper(QMainWindow):
 
             self.opacity_label.hide()
             self.opacity_slider.hide()
+            self.size_grip.hide()
             self.update_background_opacity()
 
             self.show()
@@ -287,9 +296,119 @@ class DailyScraper(QMainWindow):
             overlay.setGraphicsEffect(self.opacity_effect)
 
             self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
-            self.animation.setDuration(400)
+            self.animation.setDuration(200)
             self.animation.setStartValue(1.0)
             self.animation.setEndValue(0.0)
             self.animation.setEasingCurve(QEasingCurve.InOutQuad)
             self.animation.finished.connect(overlay.deleteLater)
             self.animation.start()
+
+    def on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.bring_to_front()
+
+    def on_tab_changed(self, index):
+        if index == 0:
+            self.dashboard_tab.load_dashboard_data()
+        elif index == 3:
+            self.schedule_tab.fetch_data()
+            self.schedule_tab.draw_overlays()
+
+    def update_background_opacity(self, value=None):
+        if value is None:
+            value = self.opacity_slider.value()
+
+        is_widget = getattr(self, "is_widget_mode", False)
+
+        if is_widget:
+            alpha = value / 100.0
+            self.settings["window_opacity"] = value
+        else:
+            alpha = 1.0
+
+        is_dark = self.settings.get("dark_mode", True)
+
+        if is_dark:
+            bg_color = f"rgba(32, 33, 36, {alpha})"
+        else:
+            bg_color = f"rgba(255, 255, 255, {alpha})"
+
+        style = f"""
+            QWidget#AppBackground {{
+                background-color: {bg_color};
+            }}
+            QWidget#FooterContainer {{
+                background-color: transparent;
+            }}
+            QTabWidget::pane {{
+                background-color: transparent;
+                border: none;
+            }}
+            QTabWidget > QWidget {{
+                background-color: transparent;
+            }}
+        """
+        self.setStyleSheet(style)
+
+    def go_to_tab(self, index):
+        self.tabs.setCurrentIndex(index)
+
+    def bring_to_front(self):
+        if getattr(self, "is_widget_mode", False):
+            self.toggle_widget_mode()
+
+        if self.isMinimized():
+            self.showNormal()
+
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_app(self):
+        self.is_quitting = True
+        self.close()
+
+    def closeEvent(self, event):
+        """
+        1. 종료 버튼을 클릭하여 종료 시 시스템 트레이로 내려가도록 설정
+        2. 위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override
+        """
+
+        if not getattr(self, "is_quitting", False):
+            event.ignore()
+            self.hide()
+
+            # 트레이 최소화 알림
+            if hasattr(self, "tray_icon"):
+                self.tray_icon.showMessage(
+                    "Daily Scaper",
+                    "프로그램 트레이로 최소화되었습니다.\n완전히 종료하려면 아이콘을 우클릭하여 종료해주세요.",
+                    QSystemTrayIcon.Information,
+                    2000,
+                )
+            return
+
+        # 단축키 등록 해제
+        try:
+            keyboard.unhook_all()
+        except:
+            pass
+
+        if hasattr(self, "tray_icon"):
+            self.tray_icon.hide()
+
+        settings_to_save = {
+            "window_geometry": self.saveGeometry(),
+            "window_opacity": self.opacity_slider.value(),
+            "always_on_top": self.top_checkbox.isChecked(),
+            "dark_mode": self.settings.get("dark_mode", True),
+            "news_limit": self.settings.get("news_limit", 15),
+            "news_cond_and": self.settings.get("news_cond_and", True),
+        }
+        data_manager.save_settings(settings_to_save)
+
+        event.accept()
+
+        app = QApplication.instance()
+        if app:
+            app.quit()

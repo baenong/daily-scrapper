@@ -19,7 +19,13 @@ from datetime import datetime, timezone
 
 from core import news_scraper, db_manager
 from core.worker import AsyncTask
-from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
+from ui.components import (
+    TitleLabel,
+    DescriptionLabel,
+    StyledButton,
+    EditableRowWidget,
+    ArticleItemWidget,
+)
 
 
 class NewsTab(QWidget):
@@ -72,14 +78,14 @@ class NewsTab(QWidget):
         self.news_limit.valueChanged.connect(self.change_news_limit)
         self.news_limit.setFixedWidth(60)
 
-        search_btn = StyledButton("검색", "#4CAF50")
-        search_btn.clicked.connect(self.search_news)
+        self.search_btn = StyledButton("검색", "#4CAF50")
+        self.search_btn.clicked.connect(self.search_news)
 
         cond_layout.addWidget(self.radio_and)
         cond_layout.addWidget(self.radio_or)
         cond_layout.addWidget(limit_label)
         cond_layout.addWidget(self.news_limit)
-        cond_layout.addWidget(search_btn)
+        cond_layout.addWidget(self.search_btn)
         left_layout.addLayout(cond_layout)
 
         add_btn = QPushButton("➕ 뉴스 키워드 추가")
@@ -120,6 +126,7 @@ class NewsTab(QWidget):
 
         # 검색 결과
         self.news_list_view = QListWidget()
+        self.news_list_view.setStyleSheet("QListWidget::item { padding: 5px; }")
         self.news_list_view.itemDoubleClicked.connect(self.open_news_link)
         right_layout.addWidget(self.news_list_view)
 
@@ -174,6 +181,7 @@ class NewsTab(QWidget):
         self.news_list_view.clear()
         self.news_filter_input.clear()
 
+        self.search_btn.setEnabled(False)
         self.news_list_view.addItem(
             "⏳ 구글 뉴스를 검색 중입니다. 잠시만 기다려주세요..."
         )
@@ -193,18 +201,24 @@ class NewsTab(QWidget):
 
     def _on_news_loaded(self, news_items):
         """뉴스 로드가 완료되면 UI에 뿌려줍니다."""
+        self.search_btn.setEnabled(True)
         self.news_list_view.clear()
+
         if not news_items:
             self.news_list_view.addItem("검색 결과가 없습니다.")
             return
 
         now = datetime.now(timezone.utc)
         for news in news_items:
-            display_text = (
-                f"📰 {news['title']}\n{news['source']} 🗓️ {news['published_str']}"
-            )
-            item = QListWidgetItem(display_text)
+            item = QListWidgetItem(self.news_list_view)
             item.setData(100, news["link"])
+
+            filter_text = f"{news["title"]} {news["source"]}".lower()
+            item.setData(101, filter_text)
+
+            custom_widget = ArticleItemWidget(
+                news["title"], news["source"], news["published_str"], "📰"
+            )
 
             try:
                 delta = now - news["published_dt"]
@@ -213,19 +227,23 @@ class NewsTab(QWidget):
             except TypeError:
                 pass
 
-            self.news_list_view.addItem(item)
+            item.setSizeHint(custom_widget.sizeHint())
+            self.news_list_view.setItemWidget(item, custom_widget)
 
     def _on_news_error(self, error_msg):
         self.news_list_view.clear()
+        self.search_btn.setEnabled(True)
         self.news_list_view.addItem("❌ 뉴스 검색 중 오류가 발생했습니다.")
         print(f"뉴스 로딩 에러: {error_msg}")
 
     def filter_news_list(self):
         keyword = self.news_filter_input.text().strip().lower()
+
         for i in range(self.news_list_view.count()):
             item = self.news_list_view.item(i)
-            item_text = item.text().lower()
-            if keyword in item_text:
+            item_text = item.data(101)
+
+            if item_text and keyword in item_text:
                 item.setHidden(False)
             else:
                 item.setHidden(True)

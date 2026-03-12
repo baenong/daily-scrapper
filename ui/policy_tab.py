@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from core import db_manager, policy_scraper
 from core.worker import AsyncTask
-from ui.components import TitleLabel, DescriptionLabel, StyledButton
+from ui.components import TitleLabel, DescriptionLabel, StyledButton, ArticleItemWidget
 
 
 class PolicyTab(QWidget):
@@ -88,6 +88,7 @@ class PolicyTab(QWidget):
         right_layout.addLayout(filter_layout)
 
         self.policy_list_view = QListWidget()
+        self.policy_list_view.setStyleSheet("QListWidget::item { padding: 5px; }")
         self.policy_list_view.itemDoubleClicked.connect(self.open_link)
         right_layout.addWidget(self.policy_list_view)
 
@@ -149,31 +150,38 @@ class PolicyTab(QWidget):
     def _fetch_policy_in_background(self, rss_urls):
         return policy_scraper.get_policy_briefings(rss_urls, limit=50)
 
-    def _on_policy_loaded(self, entries):
+    def _on_policy_loaded(self, policy_items):
         self.search_btn.setEnabled(True)
         self.search_btn.setText("선택 부처 브리핑 조회")
         self.policy_list_view.clear()
 
-        if not entries:
+        if not policy_items:
             self.policy_list_view.addItem("조회된 브리핑이 없습니다.")
             return
 
         now = datetime.now(timezone.utc)
-        for entry in entries:
-            display_text = (
-                f"📢 {entry['title']}\n[{entry['source']}] 🗓️ {entry['published_str']}"
+        for policy in policy_items:
+            item = QListWidgetItem(self.policy_list_view)
+            item.setData(100, policy["link"])
+
+            filter_title_text = policy["title"].lower()
+            filter_source_text = policy["source"].lower()
+            item.setData(101, filter_title_text)
+            item.setData(102, filter_source_text)
+
+            custom_widget = ArticleItemWidget(
+                policy["title"], policy["source"], policy["published_str"], "📢"
             )
-            item = QListWidgetItem(display_text)
-            item.setData(100, entry["link"])
 
             try:
-                delta = now - entry["published_dt"]
+                delta = now - policy["published_dt"]
                 if delta.days <= 2:
                     item.setBackground(QColor(33, 150, 243, 30))
             except TypeError:
                 pass
 
-            self.policy_list_view.addItem(item)
+            item.setSizeHint(custom_widget.sizeHint())
+            self.policy_list_view.setItemWidget(item, custom_widget)
 
     def _on_policy_error(self, error_msg):
         self.search_btn.setEnabled(True)
@@ -193,9 +201,10 @@ class PolicyTab(QWidget):
 
         for i in range(self.policy_list_view.count()):
             item = self.policy_list_view.item(i)
-            item_text = item.text().lower()
+            item_text = item.data(101)
+            item_source = item.data(102)
 
-            if (filter_dept in item_text) and (keyword in item_text):
+            if (filter_dept in item_source) and (keyword in item_text):
                 item.setHidden(False)
             else:
                 item.setHidden(True)
