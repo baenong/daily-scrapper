@@ -6,7 +6,7 @@ class AsyncTask(QThread):
     error_occurred = Signal(str)
 
     def __init__(self, target_func, *args, parent=None, **kwargs):
-        super().__init__()
+        super().__init__(parent)
         self.target_func = target_func
         self.args = args
         self.kwargs = kwargs

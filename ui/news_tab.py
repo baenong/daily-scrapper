@@ -37,7 +37,7 @@ class NewsTab(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
 
         # --- [왼쪽: 키워드 설정 영역] ---
@@ -96,7 +96,7 @@ class NewsTab(QWidget):
         scroll.setWidgetResizable(True)
         self.keyword_list_widget = QWidget()
         self.keyword_list_layout = QVBoxLayout(self.keyword_list_widget)
-        self.keyword_list_layout.setAlignment(Qt.AlignTop)
+        self.keyword_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(self.keyword_list_widget)
         left_layout.addWidget(scroll)
 
@@ -168,7 +168,11 @@ class NewsTab(QWidget):
                     group_query = " ".join(words)
                     selected_groups.append(group_query)
 
+        self.news_list_view.clear()
+        self.news_filter_input.clear()
+
         if not selected_groups:
+            self.news_list_view.addItem("⚠️ 검색할 키워드를 추가하거나 체크해주세요.")
             return
 
         final_query = ""
@@ -177,9 +181,6 @@ class NewsTab(QWidget):
         else:
             or_parts = [f"({g})" for g in selected_groups]
             final_query = " OR ".join(or_parts)
-
-        self.news_list_view.clear()
-        self.news_filter_input.clear()
 
         self.search_btn.setEnabled(False)
         self.news_list_view.addItem(
@@ -194,6 +195,7 @@ class NewsTab(QWidget):
         )
         self.worker.result_ready.connect(self._on_news_loaded)
         self.worker.error_occurred.connect(self._on_news_error)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _fetch_news_in_background(self, query, limit):
@@ -205,7 +207,7 @@ class NewsTab(QWidget):
         self.news_list_view.clear()
 
         if not news_items:
-            self.news_list_view.addItem("검색 결과가 없습니다.")
+            self.news_list_view.addItem("⚠️ 검색 결과가 없습니다.")
             return
 
         now = datetime.now(timezone.utc)
@@ -242,6 +244,9 @@ class NewsTab(QWidget):
         for i in range(self.news_list_view.count()):
             item = self.news_list_view.item(i)
             item_text = item.data(101)
+
+            if item_text is None:
+                continue
 
             if item_text and keyword in item_text:
                 item.setHidden(False)

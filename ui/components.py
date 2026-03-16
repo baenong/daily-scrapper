@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from PySide6.QtGui import QColor
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 
 class StyledButton(QPushButton):
@@ -23,7 +23,7 @@ class StyledButton(QPushButton):
     def __init__(self, text, bg_color_hex, text_color=None, padding="5px 10px"):
         super().__init__(text)
 
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         if bg_color_hex == "transparent":
             normal_bg = "transparent"
@@ -79,7 +79,7 @@ class DoubleClickLineEdit(QLineEdit):
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
-        self.focusLost.emit()
+        QTimer.singleShot(0, self.focusLost.emit)
 
 
 class TitleLabel(QLabel):

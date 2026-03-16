@@ -14,7 +14,9 @@ def get_db_path():
 
 
 def get_connection():
-    return sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
@@ -49,9 +51,11 @@ def init_db():
                     start_date TEXT NOT NULL,  
                     end_date TEXT NOT NULL,    
                     repeat_type TEXT DEFAULT 'none', 
-                    repeat_end TEXT,           
+                    repeat_end TEXT,
                     color TEXT DEFAULT '#2196F3',
-                    is_completed INTEGER DEFAULT 0 -- 완료 여부 추가
+                    description TEXT,           
+                    is_completed INTEGER DEFAULT 0,
+                    is_loadmap INTEGER DEFAULT 0 -- 중요일정 로드맵
                 )
                 """
             )
@@ -116,12 +120,28 @@ def init_db():
 
 
 def add_schedule(
-    title, start_date, end_date, repeat_type, repeat_end, color, is_completed=False
+    title,
+    start_date,
+    end_date,
+    repeat_type,
+    repeat_end,
+    color,
+    description,
+    is_completed=False,
+    is_loadmap=False,
 ):
     with closing(get_connection()) as conn:
         with conn:
             conn.execute(
-                "INSERT INTO schedules (title, start_date, end_date, repeat_type, repeat_end, color, is_completed) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO schedules (
+                    title, start_date, end_date, 
+                    repeat_type, repeat_end, 
+                    color, description, 
+                    is_completed, is_loadmap
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     title,
                     start_date,
@@ -129,7 +149,9 @@ def add_schedule(
                     repeat_type,
                     repeat_end,
                     color,
+                    description,
                     int(is_completed),
+                    int(is_loadmap),
                 ),
             )
 
@@ -142,12 +164,21 @@ def update_schedule(
     repeat_type,
     repeat_end,
     color,
+    description,
     is_completed,
+    is_loadmap,
 ):
     with closing(get_connection()) as conn:
         with conn:
             conn.execute(
-                "UPDATE schedules SET title=?, start_date=?, end_date=?, repeat_type=?, repeat_end=?, color=?, is_completed=? WHERE id=?",
+                """
+                UPDATE schedules SET 
+                    title=?, start_date=?, end_date=?, 
+                    repeat_type=?, repeat_end=?, 
+                    color=?, description=?, 
+                    is_completed=?, is_loadmap=? 
+                WHERE id=?
+                """,
                 (
                     title,
                     start_date,
@@ -155,7 +186,9 @@ def update_schedule(
                     repeat_type,
                     repeat_end,
                     color,
+                    description,
                     int(is_completed),
+                    int(is_loadmap),
                     schedule_id,
                 ),
             )
@@ -170,18 +203,26 @@ def delete_schedule(schedule_id):
 def get_schedules():
     with closing(get_connection()) as conn:
         rows = conn.execute(
-            "SELECT id, title, start_date, end_date, repeat_type, repeat_end, color, is_completed FROM schedules"
+            """
+            SELECT id, title, start_date, end_date, 
+                repeat_type, repeat_end,
+                color, description,
+                is_completed, is_loadmap
+            FROM schedules
+            """
         ).fetchall()
         return [
             {
-                "id": r[0],
-                "title": r[1],
-                "start_date": r[2],
-                "end_date": r[3],
-                "repeat_type": r[4],
-                "repeat_end": r[5],
-                "color": r[6],
-                "is_completed": bool(r[7]),
+                "id": r["id"],
+                "title": r["title"],
+                "start_date": r["start_date"],
+                "end_date": r["end_date"],
+                "repeat_type": r["repeat_type"],
+                "repeat_end": r["repeat_end"],
+                "color": r["color"],
+                "description": r["description"],
+                "is_completed": bool(r["is_completed"]),
+                "is_loadmap": bool(r["is_loadmap"]),
             }
             for r in rows
         ]
@@ -202,7 +243,7 @@ def save_news_keywords(keywords_list):
 def load_news_keywords():
     with closing(get_connection()) as conn:
         rows = conn.execute("SELECT keyword, is_active FROM news_keywords").fetchall()
-        return [{"text": r[0], "checked": bool(r[1])} for r in rows]
+        return [{"text": r["keyword"], "checked": bool(r["is_active"])} for r in rows]
 
 
 def save_law_keywords(laws_list):
@@ -219,7 +260,7 @@ def save_law_keywords(laws_list):
 def load_law_keywords():
     with closing(get_connection()) as conn:
         rows = conn.execute("SELECT keyword, is_active FROM law_keywords").fetchall()
-        return [{"text": r[0], "checked": bool(r[1])} for r in rows]
+        return [{"text": r["keyword"], "checked": bool(r["is_active"])} for r in rows]
 
 
 def load_departments():
@@ -228,7 +269,12 @@ def load_departments():
             "SELECT id, name, rss_url, is_checked FROM departments"
         ).fetchall()
         return [
-            {"id": r[0], "name": r[1], "rss_url": r[2], "checked": bool(r[3])}
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "rss_url": r["rss_url"],
+                "checked": bool(r["is_checked"]),
+            }
             for r in rows
         ]
 
@@ -247,7 +293,7 @@ def get_setting(key, default_value=None):
         row = conn.execute(
             "SELECT value FROM app_settings WHERE key = ?", (key,)
         ).fetchone()
-        return row[0] if row else default_value
+        return row["value"] if row else default_value
 
 
 def set_setting(key, value):

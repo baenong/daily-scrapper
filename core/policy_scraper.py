@@ -1,8 +1,10 @@
+import urllib3
 import feedparser
-import ssl
+import requests
+import html
 from email.utils import parsedate_to_datetime
 
-ssl._create_default_https_context = ssl._create_unverified_context
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
@@ -14,38 +16,44 @@ def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
     for url in rss_urls:
         dept_entries = []
         try:
-            feed = feedparser.parse(url)
-            source_title = feed.feed.get("title", "정책브리핑")
+            response = requests.get(url, verify=False, timeout=10)
+            response.raise_for_status()
 
-            for entry in feed.entries:
-                try:
-                    published_raw = getattr(entry, "published", "")
-                    if not published_raw:
-                        continue
-                    pub_dt = parsedate_to_datetime(published_raw)
-                except Exception:
+            feed = feedparser.parse(response.content)
+            source_title = feed.feed.get("title", "정책브리핑")
+        except Exception as e:
+            print(f"정책 RSS를 가져오는 중 오류 발생: {e}")
+            continue
+
+        for entry in feed.entries:
+            try:
+                published_raw = getattr(entry, "published", "")
+
+                if not published_raw:
                     continue
 
-                # 특수문자 보정
-                title = str(entry.title).replace("&middot;", "·")
-                title.replace("&quot;", '"')
+                pub_dt = parsedate_to_datetime(published_raw)
 
-                dept_entries.append(
-                    {
-                        "title": title,
-                        "link": entry.link,
-                        "published_dt": pub_dt,
-                        "published_str": pub_dt.strftime("%Y-%m-%d %H:%M"),
-                        "source": source_title,
-                    }
-                )
+            except Exception:
+                continue
 
-            dept_entries.sort(key=lambda x: x["published_dt"], reverse=True)
+            # 특수문자 보정
+            raw_title = getattr(entry, "title", "")
+            title = html.unescape(raw_title)
+
+            dept_entries.append(
+                {
+                    "title": title,
+                    "link": getattr(entry, "link", ""),
+                    "published_dt": pub_dt,
+                    "published_str": pub_dt.strftime("%Y-%m-%d %H:%M"),
+                    "source": source_title,
+                }
+            )
+
+        dept_entries.sort(key=lambda x: x["published_dt"], reverse=True)
+        if dept_entries:
             dept_feeds.append(dept_entries)
-
-        except Exception as e:
-            print(f"RSS 파싱 에러 ({url}): {e}")
-            continue
 
     final_selection = []
 

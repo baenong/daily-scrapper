@@ -1,9 +1,10 @@
 import feedparser
 import urllib.parse
-import ssl
+import requests
 from email.utils import parsedate_to_datetime
+import urllib3
 
-ssl._create_default_https_context = ssl._create_unverified_context
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def get_news_by_query(query_string, limit=15):
@@ -16,8 +17,15 @@ def get_news_by_query(query_string, limit=15):
         f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     )
 
-    feed = feedparser.parse(rss_url)
     news_list = []
+    try:
+        response = requests.get(rss_url, verify=False, timeout=10)
+        response.raise_for_status()
+
+        feed = feedparser.parse(response.content)
+    except Exception as e:
+        print(f"뉴스 RSS를 가져오는 중 오류 발생: {e}")
+        return []
 
     for entry in feed.entries:
         try:
@@ -28,6 +36,14 @@ def get_news_by_query(query_string, limit=15):
 
             pub_dt = parsedate_to_datetime(published_raw)
 
+            source_info = entry.get("source", {})
+            if hasattr(source_info, "title"):
+                source_title = source_info.title
+            elif isinstance(source_info, dict):
+                source_title = source_info.get("title", "알 수 없는 출처")
+            else:
+                source_title = "알 수 없는 출처"
+
         except Exception:
             continue
 
@@ -37,7 +53,7 @@ def get_news_by_query(query_string, limit=15):
                 "link": entry.link,
                 "published_dt": pub_dt,
                 "published_str": pub_dt.strftime("%Y-%m-%d"),
-                "source": entry.source.title,
+                "source": source_title,
             }
         )
 

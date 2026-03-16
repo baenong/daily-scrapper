@@ -18,11 +18,17 @@ def get_law_group_info(law_name):
     if not api_key:
         return []
 
-    encoded_query = urllib.parse.quote(law_name)
-    url = f"https://www.law.go.kr/DRF/lawSearch.do?OC={api_key}&target=eflaw&type=json&query={encoded_query}&nw=2,3"
+    url = "https://www.law.go.kr/DRF/lawSearch.do"
+    params = {
+        "OC": api_key,
+        "target": "eflaw",
+        "type": "json",
+        "query": law_name,
+        "nw": "2,3",
+    }
 
     try:
-        response = requests.get(url, verify=False)
+        response = requests.get(url, params=params, verify=False)
         response.raise_for_status()
         data = response.json()
         results = []
@@ -37,7 +43,10 @@ def get_law_group_info(law_name):
             for item in law_list:
                 item_name = item.get("법령명한글", "정보 없음")
                 law_serial = item.get("법령일련번호", "")
-                link = "https://www.law.go.kr/법령/" + item_name
+
+                encoded_name = urllib.parse.quote(item_name)
+                link = f"https://www.law.go.kr/법령/{encoded_name}"
+
                 unique_key = law_serial if law_serial else link
 
                 results.append(

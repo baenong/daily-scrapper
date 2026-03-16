@@ -8,7 +8,7 @@ APP_NAME = "DailyScraper"
 
 def get_executable_path():
     if getattr(sys, "frozen", False):
-        return sys.executable
+        return f'"{sys.executable}"'
     else:
         return os.path.abspath(sys.argv[0])
 
@@ -34,7 +34,7 @@ def set_startup(enable=True):
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
-            winreg.KEY_ALL_ACCESS,
+            winreg.KEY_SET_VALUE,
         ) as key:
             if enable:
                 exe_path = get_executable_path()

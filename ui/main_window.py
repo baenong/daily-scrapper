@@ -53,7 +53,7 @@ class DailyScraper(QMainWindow):
         if self.settings.get("window_geometry"):
             self.restoreGeometry(self.settings["window_geometry"])
 
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self.main_widget = QWidget()
         self.main_widget.setObjectName("AppBackground")
@@ -77,7 +77,7 @@ class DailyScraper(QMainWindow):
         self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
 
         if self.settings.get("always_on_top", False):
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
 
         self.footer_widget = self.setup_footer()
         layout.addWidget(self.footer_widget)
@@ -118,7 +118,7 @@ class DailyScraper(QMainWindow):
         border: none; padding: 5px 10px; border-radius: 5px; margin-left: 10px;
         """
         self.widget_btn = QPushButton("🖥️ 바탕화면 위젯 모드")
-        self.widget_btn.setCursor(Qt.PointingHandCursor)
+        self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.widget_btn.setStyleSheet(
             f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
         )
@@ -132,11 +132,11 @@ class DailyScraper(QMainWindow):
         # 창 투명도 조절
         self.opacity_label = QLabel("  투명도:")
 
-        self.opacity_slider = QSlider(Qt.Horizontal)
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(30, 100)  # 30% ~ 100%
         self.opacity_slider.setValue(self.settings.get("window_opacity", 100))
         self.opacity_slider.setFixedWidth(80)
-        self.opacity_slider.setCursor(Qt.PointingHandCursor)
+        self.opacity_slider.setCursor(Qt.CursorShape.PointingHandCursor)
         self.opacity_slider.valueChanged.connect(self.update_background_opacity)
 
         bottom_layout.addWidget(self.widget_btn)
@@ -158,7 +158,11 @@ class DailyScraper(QMainWindow):
         self.size_grip = QSizeGrip(self)
         self.size_grip.setFixedSize(16, 16)
         self.size_grip.setStyleSheet("background-color: transparent;")
-        bottom_layout.addWidget(self.size_grip, 0, Qt.AlignBottom | Qt.AlignRight)
+        bottom_layout.addWidget(
+            self.size_grip,
+            0,
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight,
+        )
         self.size_grip.hide()
 
         return footer_container
@@ -186,7 +190,7 @@ class DailyScraper(QMainWindow):
         self.tray_icon.show()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self.is_widget_mode and event.button() == Qt.LeftButton:
+        if self.is_widget_mode and event.button() == Qt.MouseButton.LeftButton:
             self.drag_pos = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             )
@@ -194,10 +198,10 @@ class DailyScraper(QMainWindow):
         else:
             super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: QMouseEvent):
         if (
             self.is_widget_mode
-            and event.buttons() == Qt.LeftButton
+            and event.buttons() == Qt.MouseButton.LeftButton
             and self.drag_pos is not None
         ):
             self.move(event.globalPosition().toPoint() - self.drag_pos)
@@ -210,24 +214,20 @@ class DailyScraper(QMainWindow):
         self.settings["always_on_top"] = checked
 
         if checked:
-            self.setWindowFlags(flags | Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(flags | Qt.WindowType.WindowStaysOnTopHint)
         else:
-            self.setWindowFlags(flags & ~Qt.WindowStaysOnTopHint)
+            self.setWindowFlags(flags & ~Qt.WindowType.WindowStaysOnTopHint)
         self.show()
 
     def toggle_widget_mode(self):
-        # self.is_widget_mode = getattr(self, "is_widget_mode", False)
-
         if not self.is_widget_mode:
             self.is_widget_mode = True
             self.saved_geometry = self.saveGeometry()
 
-            # self.tabs.tabBar().hide()
-            # 다른 탭도 위젯화하면 좋을 지 고민해볼 것
-            # self.tabs.setCurrentIndex(4)  # 탭 추가되면 여기도 수정할 것
-
             self.setWindowFlags(
-                Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint | Qt.Tool
+                Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnBottomHint
+                | Qt.WindowType.Tool
             )
 
             self.widget_btn.setText("🔙 창 모드 복귀")
@@ -243,11 +243,10 @@ class DailyScraper(QMainWindow):
             self.show()
         else:
             self.is_widget_mode = False
-            # self.tabs.tabBar().show()
 
-            flags = Qt.Window
+            flags = Qt.WindowType.Window
             if self.top_checkbox.isChecked():
-                flags |= Qt.WindowStaysOnTopHint
+                flags |= Qt.WindowType.WindowStaysOnTopHint
             self.setWindowFlags(flags)
 
             self.widget_btn.setText("🖥️ 바탕화면 위젯 모드")
@@ -260,6 +259,7 @@ class DailyScraper(QMainWindow):
             self.size_grip.hide()
             self.update_background_opacity()
 
+            self.showNormal()
             self.show()
             QApplication.processEvents()
 
@@ -299,12 +299,12 @@ class DailyScraper(QMainWindow):
             self.animation.setDuration(200)
             self.animation.setStartValue(1.0)
             self.animation.setEndValue(0.0)
-            self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+            self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
             self.animation.finished.connect(overlay.deleteLater)
             self.animation.start()
 
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.bring_to_front()
 
     def on_tab_changed(self, index):
@@ -383,7 +383,7 @@ class DailyScraper(QMainWindow):
                 self.tray_icon.showMessage(
                     "Daily Scaper",
                     "프로그램 트레이로 최소화되었습니다.\n완전히 종료하려면 아이콘을 우클릭하여 종료해주세요.",
-                    QSystemTrayIcon.Information,
+                    QSystemTrayIcon.MessageIcon.Information,
                     2000,
                 )
             return

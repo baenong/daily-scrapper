@@ -30,7 +30,7 @@ class PolicyTab(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
 
         # --- [왼쪽: 부처 선택 영역] ---
@@ -56,7 +56,7 @@ class PolicyTab(QWidget):
         scroll.setWidgetResizable(True)
         self.dept_list_widget = QWidget()
         self.dept_list_layout = QVBoxLayout(self.dept_list_widget)
-        self.dept_list_layout.setAlignment(Qt.AlignTop)
+        self.dept_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(self.dept_list_widget)
         left_layout.addWidget(scroll)
 
@@ -145,6 +145,7 @@ class PolicyTab(QWidget):
         )
         self.worker.result_ready.connect(self._on_policy_loaded)
         self.worker.error_occurred.connect(self._on_policy_error)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _fetch_policy_in_background(self, rss_urls):
@@ -203,6 +204,9 @@ class PolicyTab(QWidget):
             item = self.policy_list_view.item(i)
             item_text = item.data(101)
             item_source = item.data(102)
+
+            if item_text is None or item_source is None:
+                continue
 
             if (filter_dept in item_source) and (keyword in item_text):
                 item.setHidden(False)

@@ -24,14 +24,14 @@ class EllipsisLabel(QLabel):
     def __init__(self, text):
         super().__init__()
         self._original_text = text
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.setStyleSheet("background: transparent; border: none;")
 
     def resizeEvent(self, event):
         """위젯의 가로 크기가 변할 때마다 실행되어 글자를 알맞게 자릅니다."""
         metrics = self.fontMetrics()
         elided_text = metrics.elidedText(
-            self._original_text, Qt.ElideRight, self.width() - 5
+            self._original_text, Qt.TextElideMode.ElideRight, self.width() - 5
         )
 
         super().setText(elided_text)
@@ -44,7 +44,7 @@ class DashboardCard(QFrame):
     def __init__(self, title, btn_text, btn_callback):
         super().__init__()
         # 카드 느낌을 내기 위해 테두리와 배경색을 살짝 줍니다.
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
             """
             DashboardCard {
@@ -76,8 +76,10 @@ class DashboardCard(QFrame):
                 border-bottom: 1px solid rgba(0, 0, 0, 0.05); /* 항목 사이에 옅은 구분선 추가 */}
             """
         )
-        self.list_widget.setSelectionMode(QListWidget.NoSelection)
-        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.list_widget.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         layout.addWidget(self.list_widget)
 
         self.detail_btn = StyledButton(btn_text, "#333333", "#2196F3")
@@ -162,14 +164,16 @@ class DashboardTab(QWidget):
         self.worker = AsyncTask(self._fetch_data_in_background, parent=self)
         self.worker.result_ready.connect(self._on_data_loaded)
         self.worker.error_occurred.connect(self._on_data_error)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _fetch_data_in_background(self):
         """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
         result = {"todos": [], "news": [], "policy": [], "laws": []}
 
+        today_dt = datetime.now()
         today_qdate = QDate.currentDate()
-        today_str_law = datetime.now().strftime("%Y.%m.%d")
+        today_str_law = today_dt.strftime("%Y.%m.%d")
 
         # 1. 일정 데이터 수집
         all_schedules = db_manager.get_schedules()
@@ -241,7 +245,7 @@ class DashboardTab(QWidget):
                 prefix = "✅ " if is_comp else "✏️ "
                 item = QListWidgetItem(prefix + t["title"])
                 if is_comp:
-                    item.setForeground(Qt.gray)
+                    item.setForeground(Qt.GlobalColor.gray)
                 self.todo_card.list_widget.addItem(item)
 
         # 2. 뉴스 업데이트

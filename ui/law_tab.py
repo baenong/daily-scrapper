@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
 )
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QBrush, QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
@@ -29,7 +29,7 @@ class LawTab(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
 
         # --- [왼쪽: 법령 목록 관리] ---
@@ -58,7 +58,7 @@ class LawTab(QWidget):
         scroll.setWidgetResizable(True)
         self.law_list_widget = QWidget()
         self.law_list_layout = QVBoxLayout(self.law_list_widget)
-        self.law_list_layout.setAlignment(Qt.AlignTop)
+        self.law_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(self.law_list_widget)
         left_layout.addWidget(scroll)
 
@@ -82,8 +82,8 @@ class LawTab(QWidget):
         self.law_table.verticalHeader().setDefaultSectionSize(35)
 
         header = self.law_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
         self.law_table.itemDoubleClicked.connect(self.open_law_link)
         right_layout.addWidget(self.law_table)
@@ -127,6 +127,7 @@ class LawTab(QWidget):
         self.worker = AsyncTask(self._fetch_laws_in_background, law_names, parent=self)
         self.worker.result_ready.connect(self._on_laws_loaded)
         self.worker.error_occurred.connect(self._on_laws_error)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _fetch_laws_in_background(self, law_names):
@@ -152,7 +153,7 @@ class LawTab(QWidget):
 
         today_str = datetime.now().strftime("%Y.%m.%d")
         future_color = QColor(255, 0, 0, 30)
-        now_color = QColor(255, 0, 0)
+        now_color = QColor(255, 0, 0, 80)
 
         for info in all_law_infos:
             row = self.law_table.rowCount()
@@ -161,20 +162,21 @@ class LawTab(QWidget):
             name_item = QTableWidgetItem(info["name"])
             date_item = QTableWidgetItem(info["enforce_date"])
 
-            date_item.setTextAlignment(Qt.AlignCenter)
+            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             name_item.setData(Qt.UserRole, info["link"])
 
             enforce_date = info["enforce_date"]
 
-            if enforce_date > today_str and enforce_date != "정보 없음":
-                name_item.setBackground(future_color)
-                date_item.setBackground(future_color)
-                name_item.setText(f"🚀 [시행예정] {info['name']}")
+            if enforce_date != "정보 없음":
+                if enforce_date > today_str:
+                    name_item.setBackground(future_color)
+                    date_item.setBackground(future_color)
+                    name_item.setText(f"🚀 [시행예정] {info['name']}")
 
-            if enforce_date == today_str and enforce_date != "정보 없음":
-                name_item.setBackground(now_color)
-                date_item.setBackground(now_color)
-                name_item.setText(f"🚨 [오늘시행] {info['name']}")
+                if enforce_date == today_str:
+                    name_item.setBackground(now_color)
+                    date_item.setBackground(now_color)
+                    name_item.setText(f"🚨 [오늘시행] {info['name']}")
 
             self.law_table.setItem(row, 0, name_item)
             self.law_table.setItem(row, 1, date_item)
