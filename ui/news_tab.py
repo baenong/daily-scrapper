@@ -159,6 +159,9 @@ class NewsTab(QWidget):
 
     def search_news(self):
         selected_groups = []
+        self.news_list_view.clear()
+        self.news_filter_input.clear()
+
         for i in range(self.keyword_list_layout.count()):
             item = self.keyword_list_layout.itemAt(i).widget()
             if isinstance(item, EditableRowWidget) and item.checkbox.isChecked():
@@ -168,20 +171,11 @@ class NewsTab(QWidget):
                     group_query = " ".join(words)
                     selected_groups.append(group_query)
 
-        self.news_list_view.clear()
-        self.news_filter_input.clear()
-
         if not selected_groups:
             self.news_list_view.addItem("⚠️ 검색할 키워드를 추가하거나 체크해주세요.")
             return
 
-        final_query = ""
-        if self.radio_and.isChecked():
-            final_query = " ".join(selected_groups)
-        else:
-            or_parts = [f"({g})" for g in selected_groups]
-            final_query = " OR ".join(or_parts)
-
+        is_and_cond = self.radio_and.isChecked()
         self.search_btn.setEnabled(False)
         self.news_list_view.addItem(
             "⏳ 구글 뉴스를 검색 중입니다. 잠시만 기다려주세요..."
@@ -189,7 +183,8 @@ class NewsTab(QWidget):
 
         self.worker = AsyncTask(
             self._fetch_news_in_background,
-            final_query,
+            selected_groups,
+            is_and_cond,
             self.news_limit.value(),
             parent=self,
         )
@@ -198,8 +193,27 @@ class NewsTab(QWidget):
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
-    def _fetch_news_in_background(self, query, limit):
-        return news_scraper.get_news_by_query(query, limit=limit)
+    def _fetch_news_in_background(self, selected_groups, is_and_cond, limit):
+        if is_and_cond:
+            final_query = " ".join(selected_groups)
+            return news_scraper.get_news_by_query(final_query, limit=limit)
+        else:
+            all_news = []
+            seen_links = set()
+
+            for query in selected_groups:
+                try:
+                    results = news_scraper.get_news_by_query(query, limit=limit)
+                    if results:
+                        for news in results:
+                            if news["link"] not in seen_links:
+                                seen_links.add(news["link"])
+                                all_news.append(news)
+                except Exception:
+                    continue
+
+        all_news.sort(key=lambda x: x.get("published_dt"), reverse=True)
+        return all_news[:limit]
 
     def _on_news_loaded(self, news_items):
         """뉴스 로드가 완료되면 UI에 뿌려줍니다."""
