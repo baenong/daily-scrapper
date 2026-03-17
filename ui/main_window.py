@@ -30,6 +30,7 @@ from ui.news_tab import NewsTab
 from ui.law_tab import LawTab
 from ui.schedule_tab import ScheduleTab
 from ui.policy_tab import PolicyTab
+from ui.roadmap_tab import RoadmapTab
 
 
 class HotKeySignal(QObject):
@@ -69,12 +70,14 @@ class DailyScraper(QMainWindow):
         self.law_tab = LawTab(self.settings)
         self.policy_tab = PolicyTab(self.settings)
         self.schedule_tab = ScheduleTab(self.settings)
+        self.roadmap_tab = RoadmapTab(self.settings)
 
         self.tabs.addTab(self.dashboard_tab, "🏠 대시보드")
         self.tabs.addTab(self.news_tab, "📰 뉴스 스크랩")
         self.tabs.addTab(self.law_tab, "⚖️ 법령 개정 알림")
         self.tabs.addTab(self.policy_tab, "🏛️ 정책 브리핑")
         self.tabs.addTab(self.schedule_tab, "📅 일정 관리")
+        self.tabs.addTab(self.roadmap_tab, "🗺️ 연간 로드맵")
 
         if self.settings.get("always_on_top", False):
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)

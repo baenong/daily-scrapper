@@ -70,7 +70,7 @@ class CustomSplashScreen(QSplashScreen):
 
 if __name__ == "__main__":
     if sys.platform == "win32":
-        myappid = "ahnminsoo.daily-scrapper.v1.0"
+        myappid = "ahnminsoo.daily-scraper.v1.0"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     app = QApplication(sys.argv)

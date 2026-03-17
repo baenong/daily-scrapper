@@ -19,9 +19,11 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QMenu,
+    QColorDialog,
+    QToolTip,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QTimer
-from PySide6.QtGui import QColor, QPixmap, QIcon, QMouseEvent
+from PySide6.QtCore import Qt, QDate, Signal, QTimer, QPoint
+from PySide6.QtGui import QColor, QPixmap, QIcon, QMouseEvent, QEnterEvent
 from ui.components import TitleLabel, StyledButton
 from core import db_manager, law_scraper
 from core.worker import AsyncTask
@@ -119,7 +121,7 @@ class EventDialog(QDialog):
     def __init__(self, date_str, schedule_data=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("일정 관리")
-        self.setFixedSize(400, 600)
+        self.setFixedSize(400, 620)
         self.schedule_data = schedule_data
 
         layout = QVBoxLayout(self)
@@ -166,8 +168,19 @@ class EventDialog(QDialog):
         # Color Section
         color_layout = QHBoxLayout()
         color_layout.addWidget(PopUpTitle("🎨 색상"))
+
+        # 미리 지정된 색 말고도 색을 선택할 수 있도록
+        self.color_preview = ClickableColorLabel()
+        self.color_preview.setFixedSize(20, 20)
+        self.color_preview.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.color_preview.setToolTip("클릭하여 다른 색상을 선택하세요")
+        self.color_preview.clicked.connect(self.open_color_picker)
+        color_layout.addWidget(self.color_preview)
+        color_layout.addWidget(QLabel("← 커스텀 색상 선택"))
+        color_layout.addStretch()
+
         self.color_combo = QComboBox()
-        self.color_combo.setMaximumWidth(165)
+        self.color_combo.setMinimumWidth(125)
         self.colors = {
             " 빨간색": "#FF968A",
             " 주황색": "#FFAD60",
@@ -176,20 +189,16 @@ class EventDialog(QDialog):
             " 파란색": "#A9CBD7",
             " 보라색": "#C4BEE2",
         }
-        # self.color_preview = QLabel()
-        # self.color_preview.setFixedSize(20, 20)
 
         for name, hex_color in self.colors.items():
             pixmap = QPixmap(16, 16)
             pixmap.fill(QColor(hex_color))
             self.color_combo.addItem(QIcon(pixmap), name)
 
-        # self.color_combo.currentIndexChanged.connect(self.update_color_preview)
-        # self.update_color_preview()
+        self.color_combo.currentIndexChanged.connect(self.update_color_preview)
+        self.update_color_preview()
 
         color_layout.addWidget(self.color_combo)
-        # color_layout.addWidget(self.color_preview)
-        # color_layout.addStretch()
         layout.addLayout(color_layout)
         layout.addWidget(Separator())
 
@@ -199,14 +208,33 @@ class EventDialog(QDialog):
         description_layout.addWidget(self.description_text)
         layout.addLayout(description_layout)
 
-        # 완료 여부 체크
-        self.is_completed_cb = QCheckBox("✅ 이 일정을 완료했습니다.")
-        self.is_completed_cb.setStyleSheet("margin-top: 10px;")
-        layout.addWidget(self.is_completed_cb)
+        # Road Map
+        self.is_roadmap_cb = QCheckBox("⭐ 로드맵에 추가합니다.")
+        self.is_roadmap_cb.setStyleSheet("margin-right: 10px;")
+        layout.addWidget(self.is_roadmap_cb)
 
-        self.is_loadmap_cb = QCheckBox("⭐ 로드맵에 추가합니다.")
-        self.is_loadmap_cb.setStyleSheet("margin-top: 5px;")
-        layout.addWidget(self.is_loadmap_cb)
+        group_layout = QHBoxLayout()
+        group_layout.setContentsMargins(0, 0, 0, 0)
+        self.roadmap_group_combo = QComboBox()
+        self.roadmap_group_combo.setEnabled(False)
+
+        self.group_mgr_btn = StyledButton("⚙️", "transparent", "#777777", padding="2px")
+        self.group_mgr_btn.setFixedSize(30, 30)
+        self.group_mgr_btn.setToolTip("로드맵 그룹 추가/삭제")
+        self.group_mgr_btn.setEnabled(False)
+        self.group_mgr_btn.clicked.connect(self.open_group_manager)
+
+        self.is_roadmap_cb.toggled.connect(self.roadmap_group_combo.setEnabled)
+        self.is_roadmap_cb.toggled.connect(self.group_mgr_btn.setEnabled)
+        group_layout.addWidget(self.roadmap_group_combo, stretch=1)
+        group_layout.addWidget(self.group_mgr_btn)
+        layout.addLayout(group_layout)
+        self.refresh_groups()
+
+        # Is Completed?
+        self.is_completed_cb = QCheckBox("✅ 이 일정을 완료했습니다.")
+        self.is_completed_cb.setStyleSheet("margin-top: 5px;")
+        layout.addWidget(self.is_completed_cb)
         layout.addStretch()
 
         btn_layout = QHBoxLayout()
@@ -241,15 +269,61 @@ class EventDialog(QDialog):
 
         self.repeat_end.setEnabled(self.repeat_combo.currentIndex() != 0)
 
-    # def update_color_preview(self):
-    #     selected_color = self.colors[self.color_combo.currentText()]
-    #     self.color_preview.setStyleSheet(
-    #         f"background-color: {selected_color}; border-radius: 10px; border: 1px solid #CCCCCC;"
-    #     )
+    def open_color_picker(self):
+        current_hex = self.colors.get(self.color_combo.currentText(), "#FF968A")
+        color = QColorDialog.getColor(QColor(current_hex), self, "색상 선택")
+
+        if color.isValid():
+            hex_color = color.name().upper()
+            if " 사용자 지정" not in self.colors:
+                self.color_combo.addItem(" 사용자 지정")
+
+            self.colors[" 사용자 지정"] = hex_color
+            self.color_combo.setCurrentText(" 사용자 지정")
+            self.update_color_preview()
+
+    def refresh_groups(self, default_select_id=None):
+        self.roadmap_group_combo.clear()
+        self.roadmap_groups = db_manager.get_roadmap_groups()
+
+        default_idx = 0
+        for i, group in enumerate(self.roadmap_groups):
+            self.roadmap_group_combo.addItem(group["name"], group["id"])
+            if group["name"] == "미지정":
+                default_idx = i
+
+        if default_select_id:
+            idx = self.roadmap_group_combo.findData(default_select_id)
+            if idx >= 0:
+                self.roadmap_group_combo.setCurrentIndex(idx)
+            else:
+                self.roadmap_group_combo.setCurrentIndex(default_idx)
+        else:
+            self.roadmap_group_combo.setCurrentIndex(default_idx)
+
+    def open_group_manager(self):
+        # 순환 참조(Circular Import) 방지를 위해 함수 내부에서 임포트
+        from ui.roadmap_tab import GroupManagerDialog
+
+        dialog = GroupManagerDialog(self)
+        dialog.exec()
+
+        current_id = self.roadmap_group_combo.currentData()
+        self.refresh_groups(default_select_id=current_id)
+
+        if hasattr(self.parent(), "refresh_data"):
+            self.parent().refresh_data()
+
+    def update_color_preview(self):
+        selected_color = self.colors[self.color_combo.currentText()]
+        self.color_preview.setStyleSheet(
+            f"background-color: {selected_color}; border-radius: 10px; border: 1px solid #ccc;"
+        )
 
     def load_existing_data(self):
         self.title_input.setText(self.schedule_data["title"])
 
+        # Period Section
         self.start_date.setDate(
             QDate.fromString(self.schedule_data["start_date"], "yyyy-MM-dd")
         )
@@ -257,6 +331,7 @@ class EventDialog(QDialog):
             QDate.fromString(self.schedule_data["end_date"], "yyyy-MM-dd")
         )
 
+        # Repeat Section
         rtype = self.schedule_data["repeat_type"]
         self.repeat_combo.setCurrentIndex(
             1
@@ -268,31 +343,77 @@ class EventDialog(QDialog):
                 QDate.fromString(self.schedule_data["repeat_end"], "yyyy-MM-dd")
             )
 
-        for key, val in self.colors.items():
-            if val == self.schedule_data["color"]:
-                self.color_combo.setCurrentText(key)
+        # Color Pick Section
+        saved_color = self.schedule_data.get("color", "").upper()
+        self.color_matched = False
 
+        for key, val in self.colors.items():
+            if val.upper() == saved_color:
+                self.color_combo.setCurrentText(key)
+                self.color_matched = True
+                break
+
+        if not self.color_matched and saved_color:
+            self.colors[" 사용자 지정"] = saved_color
+
+            pixmap = QPixmap(16, 16)
+            pixmap.fill(QColor(saved_color))
+            self.color_combo.addItem(QIcon(pixmap), " 사용자 지정")
+            self.color_combo.setCurrentText(" 사용자 지정")
+
+        self.update_color_preview()
+
+        # Description
         self.description_text.setPlainText(self.schedule_data.get("description", ""))
+
+        # Road Map Data
+        is_roadmap = self.schedule_data.get("is_roadmap", False)
+        self.is_roadmap_cb.setChecked(is_roadmap)
+
+        group_id = self.schedule_data.get("group_id")
+        if is_roadmap and group_id:
+            index = self.roadmap_group_combo.findData(group_id)
+            if index >= 0:
+                self.roadmap_group_combo.setCurrentIndex(index)
+
+        # Complete Check
         self.is_completed_cb.setChecked(self.schedule_data.get("is_completed", False))
-        self.is_loadmap_cb.setChecked(self.schedule_data.get("is_loadmap", False))
 
     def save_event(self):
         title = self.title_input.text().strip()
+
         if not title:
+            QMessageBox.warning(self, "오류", "일정 이름을 입력하세요.")
             return
-        start_str = self.start_date.date().toString("yyyy-MM-dd")
-        end_str = self.end_date.date().toString("yyyy-MM-dd")
+
+        start_date = self.start_date.date()
+        end_date = self.end_date.date()
+        if start_date > end_date:
+            QMessageBox.warning(self, "오류", "시작일이 종료일보다 이전이어야 합니다.")
+            return
+
+        start_str = start_date.toString("yyyy-MM-dd")
+        end_str = end_date.toString("yyyy-MM-dd")
+
         rtype_map = {0: "none", 1: "daily", 2: "weekly", 3: "monthly"}
-        repeat_type = rtype_map[self.repeat_combo.currentIndex()]
-        repeat_end_str = (
-            self.repeat_end.date().toString("yyyy-MM-dd")
-            if repeat_type != "none"
-            else ""
-        )
+        rtype = rtype_map[self.repeat_combo.currentIndex()]
+        repeat_end_date = self.repeat_end.date()
+        repeat_end_str = ""
+
+        if rtype != "none":
+            today = QDate().currentDate()
+            if today > repeat_end_date:
+                QMessageBox.warning(self, "오류", "반복 종료일이 이미 지났습니다.")
+                return
+
+            repeat_end_str = repeat_end_date.toString("yyyy-MM-dd")
+
         color_hex = self.colors[self.color_combo.currentText()]
         description = self.description_text.toPlainText()
         is_completed = self.is_completed_cb.isChecked()
-        is_loadmap = self.is_loadmap_cb.isChecked()
+
+        is_roadmap = self.is_roadmap_cb.isChecked()
+        group_id = self.roadmap_group_combo.currentData() if is_roadmap else None
 
         if self.schedule_data:
             db_manager.update_schedule(
@@ -300,24 +421,26 @@ class EventDialog(QDialog):
                 title,
                 start_str,
                 end_str,
-                repeat_type,
+                rtype,
                 repeat_end_str,
                 color_hex,
                 description,
                 is_completed,
-                is_loadmap,
+                is_roadmap,
+                group_id,
             )
         else:
             db_manager.add_schedule(
                 title,
                 start_str,
                 end_str,
-                repeat_type,
+                rtype,
                 repeat_end_str,
                 color_hex,
                 description,
                 is_completed,
-                is_loadmap,
+                is_roadmap,
+                group_id,
             )
         self.accept()
 
@@ -407,7 +530,8 @@ class DailyEventRowWidget(QWidget):
             s["color"],
             s.get("description", ""),
             checked,
-            s.get("is_loadmap", False),
+            s.get("is_roadmap", False),
+            s.get("group_id"),
         )
         self.parent_dialog.refresh_data()
 
@@ -513,6 +637,19 @@ class ClickableEventLabel(QLabel):
         self.schedule_data = schedule_data
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    # ToolTip 관련 Override
+    def enterEvent(self, event: QEnterEvent):
+        if QToolTip.isVisible() and QToolTip.text() == self.toolTip():
+            super().enterEvent(event)
+            return
+
+        if self.toolTip():
+            widget_bottom_left = self.mapToGlobal(QPoint(0, self.height()))
+            widget_bottom_left.setY(widget_bottom_left.y() + 2)
+            QToolTip.showText(widget_bottom_left, self.toolTip(), self)
+
+        super().enterEvent(event)
+
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.schedule_data.get("is_law"):
@@ -559,13 +696,13 @@ class ClickableEventLabel(QLabel):
 
         menu.addSeparator()
 
+        original_style = self.styleSheet()
+        self.setStyleSheet(original_style + "border: 2px solid #333333;")
+        pos = event.globalPosition().toPoint()
+        action = menu.exec(pos)
+
         if self.schedule_data.get("is_law"):
             action_link = menu.addAction("🔗 국가법령정보센터에서 보기")
-
-            original_style = self.styleSheet()
-            self.setStyleSheet(original_style + "border: 2px solid #333333;")
-            action = menu.exec(event.globalPosition().toPoint())
-            self.setStyleSheet(original_style)
 
             if action == action_link:
                 webbrowser.open(self.schedule_data.get("link", ""))
@@ -577,11 +714,6 @@ class ClickableEventLabel(QLabel):
         action_toggle = menu.addAction(f"✅ {status_text}")
         action_edit = menu.addAction("✏️ 편집")
         action_delete = menu.addAction("🗑️ 삭제")
-
-        original_style = self.styleSheet()
-        self.setStyleSheet(original_style + "border: 2px solid #333333;")
-        action = menu.exec(event.globalPosition().toPoint())
-        self.setStyleSheet(original_style)
 
         if action == action_toggle:
             self.statusToggled.emit(self.schedule_data)
@@ -602,6 +734,15 @@ class ClickableLabel(QLabel):
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.date_obj)
+
+
+class ClickableColorLabel(QLabel):
+    clicked = Signal()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class CustomCalendarCell(QWidget):
@@ -1027,7 +1168,10 @@ class ScheduleTab(QWidget):
                 r_left = "4px" if is_first_seg else "0px"
                 r_right = "4px" if is_last_seg else "0px"
 
-                display_text = f" {schedule['title']}" if is_first_seg else " "
+                is_roadmap = schedule.get("is_roadmap", False)
+                prefix = "⭐" if is_roadmap else ""
+
+                display_text = f"{prefix} {schedule['title']}" if is_first_seg else " "
                 label = ClickableEventLabel(schedule, display_text)
 
                 style = f"""
@@ -1085,7 +1229,8 @@ class ScheduleTab(QWidget):
             s.get("description", ""),
             s["color"],
             new_status,
-            s.get("is_loadmap", False),
+            s.get("is_roadmap", False),
+            s.get("group_id"),
         )
         self.fetch_data()
         self.draw_overlays()

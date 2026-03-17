@@ -55,10 +55,35 @@ def init_db():
                     color TEXT DEFAULT '#2196F3',
                     description TEXT,           
                     is_completed INTEGER DEFAULT 0,
-                    is_loadmap INTEGER DEFAULT 0 -- 중요일정 로드맵
+                    is_roadmap INTEGER DEFAULT 0 -- 중요일정 로드맵
                 )
                 """
             )
+
+            # 2026. 3. 16. 로드맵 작성을 위한 그룹 테이블
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS roadmap_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    color TEXT DEFAULT '#2196F3'
+                )
+                """
+            )
+
+            # 마이그레이션 코드
+            cursor = conn.execute("PRAGMA table_info(schedules)")
+            columns = [info[1] for info in cursor.fetchall()]
+            if "group_id" not in columns:
+                conn.execute("ALTER TABLE schedules ADD COLUMN group_id INTEGER")
+
+            unassigned_count = conn.execute(
+                "SELECT COUNT(*) FROM roadmap_groups WHERE name='미지정'"
+            ).fetchone()[0]
+            if unassigned_count == 0:
+                conn.execute(
+                    "INSERT INTO roadmap_groups (name, color) VALUES ('미지정', '#A8A8A8')"
+                )
 
             # 2026. 3. 10. 정책브리핑
             conn.execute(
@@ -128,7 +153,8 @@ def add_schedule(
     color,
     description,
     is_completed=False,
-    is_loadmap=False,
+    is_roadmap=False,
+    group_id=None,
 ):
     with closing(get_connection()) as conn:
         with conn:
@@ -138,9 +164,9 @@ def add_schedule(
                     title, start_date, end_date, 
                     repeat_type, repeat_end, 
                     color, description, 
-                    is_completed, is_loadmap
+                    is_completed, is_roadmap, group_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     title,
@@ -151,7 +177,8 @@ def add_schedule(
                     color,
                     description,
                     int(is_completed),
-                    int(is_loadmap),
+                    int(is_roadmap),
+                    group_id,
                 ),
             )
 
@@ -166,7 +193,8 @@ def update_schedule(
     color,
     description,
     is_completed,
-    is_loadmap,
+    is_roadmap,
+    group_id=None,
 ):
     with closing(get_connection()) as conn:
         with conn:
@@ -176,7 +204,7 @@ def update_schedule(
                     title=?, start_date=?, end_date=?, 
                     repeat_type=?, repeat_end=?, 
                     color=?, description=?, 
-                    is_completed=?, is_loadmap=? 
+                    is_completed=?, is_roadmap=? , group_id=?
                 WHERE id=?
                 """,
                 (
@@ -188,7 +216,8 @@ def update_schedule(
                     color,
                     description,
                     int(is_completed),
-                    int(is_loadmap),
+                    int(is_roadmap),
+                    group_id,
                     schedule_id,
                 ),
             )
@@ -207,7 +236,7 @@ def get_schedules():
             SELECT id, title, start_date, end_date, 
                 repeat_type, repeat_end,
                 color, description,
-                is_completed, is_loadmap
+                is_completed, is_roadmap, group_id
             FROM schedules
             """
         ).fetchall()
@@ -222,7 +251,8 @@ def get_schedules():
                 "color": r["color"],
                 "description": r["description"],
                 "is_completed": bool(r["is_completed"]),
-                "is_loadmap": bool(r["is_loadmap"]),
+                "is_roadmap": bool(r["is_roadmap"]),
+                "group_id": r["group_id"],
             }
             for r in rows
         ]
@@ -286,6 +316,51 @@ def update_department_status(dept_id, is_checked):
                 "UPDATE departments SET is_checked = ? WHERE id = ?",
                 (int(is_checked), dept_id),
             )
+
+
+def get_roadmap_groups():
+    with closing(get_connection()) as conn:
+        rows = conn.execute("SELECT id, name, color FROM roadmap_groups").fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_roadmap_group(name, color):
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute(
+                "INSERT INTO roadmap_groups (name, color) VALUES (?, ?)", (name, color)
+            )
+
+
+def update_roadmap_group(group_id, name, color):
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute(
+                "UPDATE roadmap_groups SET name=?, color=? WHERE id=?",
+                (name, color, group_id),
+            )
+
+
+def delete_roadmap_group(group_id):
+    with closing(get_connection()) as conn:
+        with conn:
+            row = conn.execute(
+                "SELECT id FROM roadmap_groups WHERE name='미지정'"
+            ).fetchone()
+            default_id = row[0] if row else None
+
+            if default_id:
+                conn.execute(
+                    "UPDATE schedules SET group_id = ? WHERE group_id = ?",
+                    (default_id, group_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE schedules SET group_id = NULL WHERE group_id = ?",
+                    (group_id,),
+                )
+
+            conn.execute("DELETE FROM roadmap_groups WHERE id=?", (group_id,))
 
 
 def get_setting(key, default_value=None):
