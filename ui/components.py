@@ -43,7 +43,6 @@ class StyledButton(QPushButton):
 
     def __init__(self, text, bg_color_hex, text_color=None, padding="5px 14px"):
         super().__init__(text)
-
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         if bg_color_hex == "transparent":
@@ -65,7 +64,7 @@ class StyledButton(QPushButton):
                     + base_color.blue() * 0.114
                 )
 
-                final_text_color = COLORS["black-13"] if luminance > 150 else "#FFFFFF"
+                final_text_color = COLORS["c13"] if luminance > 150 else "#FFFFFF"
             else:
                 final_text_color = text_color
 
@@ -107,15 +106,13 @@ class DoubleClickLineEdit(QLineEdit):
 class TitleLabel(QLabel):
     def __init__(self, text, size=18):
         super().__init__(text)
-        self.setStyleSheet(
-            f"font-weight: bold; font-size: {size}px; margin-right: 5px;"
-        )
+        self.setStyleSheet(tw("font-bold", f"text-{size}", "mr-5"))
 
 
 class DescriptionLabel(QLabel):
     def __init__(self, text):
         super().__init__(text)
-        self.setStyleSheet("color: #777777; margin-bottom: 10px;")
+        self.setStyleSheet(tw("text-c77", "mb-10"))
 
 
 class EditableRowWidget(QWidget):
@@ -188,10 +185,10 @@ class ArticleItemWidget(QWidget):
         layout.setSpacing(8)
 
         self.title_label = QLabel(f"{icon} {title}")
-        self.title_label.setStyleSheet("font-size: 14px;")
+        self.title_label.setStyleSheet(tw("text-14"))
 
         self.meta_label = QLabel(f"[{source}]  🗓️ {pub_date}")
-        self.meta_label.setStyleSheet("font-size: 13px; color: #777777;")
+        self.meta_label.setStyleSheet(tw("text-13", "text-c77"))
 
         layout.addWidget(self.title_label)
         layout.addWidget(self.meta_label)
@@ -206,15 +203,56 @@ class ClickableColorLabel(QLabel):
         super().mousePressEvent(event)
 
 
-class ClickableEventLabel(QLabel):
-    """뷰포트 위에 둥둥 떠다닐 클릭 가능한 막대 위젯"""
+class ScheduleActionMixin:
+    def handle_double_click(self):
+        if self.schedule_data.get("is_law"):
+            webbrowser.open(self.schedule_data.get("link", ""))
+        else:
+            self.edit_event()
 
-    # Signals
-    doubleClicked = Signal(dict)
-    statusToggled = Signal(dict)
-    deleteRequested = Signal(dict)
-    editRequested = Signal(dict)
+    def toggle_event(self, checked=None):
+        if isinstance(checked, bool):
+            new_status = checked
+        else:
+            new_status = not self.schedule_data.get("is_completed", False)
 
+        s = self.schedule_data
+        db_manager.update_schedule(
+            s["id"],
+            s["title"],
+            s["start_date"],
+            s["end_date"],
+            s["repeat_type"],
+            s["repeat_end"],
+            s["color"],
+            s.get("description", ""),
+            new_status,
+            s.get("is_roadmap", False),
+            s.get("group_id"),
+        )
+        global_signals.schedule_updated.emit()
+
+    def edit_event(self):
+        dialog = EventDialog(
+            self.schedule_data["start_date"],
+            schedule_data=self.schedule_data,
+            parent=self,
+        )
+        dialog.exec()
+
+    def delete_event(self):
+        reply = QMessageBox.question(
+            self,
+            "삭제",
+            f"'{self.schedule_data['title']}' 일정을 삭제하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            db_manager.delete_schedule(self.schedule_data["id"])
+            global_signals.schedule_updated.emit()
+
+
+class ClickableEventLabel(QLabel, ScheduleActionMixin):
     def __init__(self, schedule_data, text, parent=None):
         super().__init__(text, parent)
         self.schedule_data = schedule_data
@@ -235,10 +273,7 @@ class ClickableEventLabel(QLabel):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            if self.schedule_data.get("is_law"):
-                webbrowser.open(self.schedule_data.get("link", ""))
-            else:
-                self.doubleClicked.emit(self.schedule_data)
+            self.handle_double_click()
             event.accept()
 
     def contextMenuEvent(self, event: QContextMenuEvent):
@@ -258,7 +293,6 @@ class ClickableEventLabel(QLabel):
 
         title_action = menu.addAction(f"🏷️ {self.schedule_data['title']}")
         title_action.setEnabled(False)
-
         menu.addSeparator()
 
         original_style = self.styleSheet()
@@ -271,7 +305,6 @@ class ClickableEventLabel(QLabel):
                 pass
 
         menu.aboutToHide.connect(restore_style)
-
         self.setStyleSheet(
             original_style + tw("border-2", "border-solid", "border-c33")
         )
@@ -295,11 +328,11 @@ class ClickableEventLabel(QLabel):
         action = menu.exec(pos)
 
         if action == action_toggle:
-            self.statusToggled.emit(self.schedule_data)
+            self.toggle_event()
         elif action == action_edit:
-            self.editRequested.emit(self.schedule_data)
+            self.edit_event()
         elif action == action_delete:
-            self.deleteRequested.emit(self.schedule_data)
+            self.delete_event()
 
 
 class Separator(QLabel):
@@ -567,7 +600,10 @@ class EventDialog(QDialog):
     def update_color_preview(self):
         selected_color = self.colors[self.color_combo.currentText()]
         self.color_preview.setStyleSheet(
-            f"background-color: {selected_color}; border-radius: 10px; {tw("border-b", "border-cCC")}"
+            f"""
+            background-color: {selected_color};
+            {tw('border-b', 'border-cCC', 'rounded-10')}
+            """
         )
 
     def load_existing_data(self):
@@ -583,11 +619,9 @@ class EventDialog(QDialog):
 
         # Repeat Section
         rtype = self.schedule_data["repeat_type"]
-        self.repeat_combo.setCurrentIndex(
-            1
-            if rtype == "daily"
-            else 2 if rtype == "weekly" else 3 if rtype == "monthly" else 0
-        )
+        rtype_index_map = {"none": 0, "daily": 1, "weekly": 2, "monthly": 3}
+        self.repeat_combo.setCurrentIndex(rtype_index_map.get(rtype, 0))
+
         if self.schedule_data["repeat_end"]:
             self.repeat_end.setDate(
                 QDate.fromString(self.schedule_data["repeat_end"], "yyyy-MM-dd")

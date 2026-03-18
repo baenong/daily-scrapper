@@ -1,3 +1,4 @@
+import concurrent.futures
 import feedparser
 import urllib.parse
 import requests
@@ -5,6 +6,9 @@ from email.utils import parsedate_to_datetime
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+session = requests.Session()
+session.verify = False
 
 
 def get_news_by_query(query_string, limit=15):
@@ -19,7 +23,7 @@ def get_news_by_query(query_string, limit=15):
 
     news_list = []
     try:
-        response = requests.get(rss_url, verify=False, timeout=10)
+        response = session.get(rss_url, timeout=10)
         response.raise_for_status()
 
         feed = feedparser.parse(response.content)
@@ -68,16 +72,25 @@ def get_news_by_or_query(selected_groups, limit=15):
     all_news = []
     seen_links = set()
 
-    for query in selected_groups:
-        try:
-            results = get_news_by_query(query, limit=limit)
-            if results:
-                for news in results:
-                    if news["link"] not in seen_links:
-                        seen_links.add(news["link"])
-                        all_news.append(news)
-        except Exception:
-            continue
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(selected_groups), 10)
+    ) as executor:
+        future_to_query = {
+            executor.submit(get_news_by_query, query, limit=limit): query
+            for query in selected_groups
+        }
+
+        for future in concurrent.futures.as_completed(future_to_query):
+            try:
+                results = future.result()
+                if results:
+                    for news in results:
+                        if news["link"] not in seen_links:
+                            seen_links.add(news["link"])
+                            all_news.append(news)
+            except Exception as e:
+                query = future_to_query[future]
+                print(f"[{query}] 뉴스 병렬 처리 중 오류 발생: {e}")
 
     all_news.sort(key=lambda x: x["published_dt"], reverse=True)
     return all_news[:limit]

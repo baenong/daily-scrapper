@@ -1,4 +1,4 @@
-# 색상 팔레트
+# Event Dialog에서 사용하는 기본 색상 코드
 DEFAULT_COLORS = {
     " 빨간색": "#FF968A",
     " 주황색": "#FFAD60",
@@ -36,6 +36,7 @@ COLORS = {
     "green": "#00FF00",
     "blue": "#0000FF",
     "gray": "#808080",
+    "purple": "#673AB7",
     "transparent": "transparent",
 }
 
@@ -43,9 +44,6 @@ BORDER_STYLES = {"b", "bb", "solid", "dashed", "dotted", "double", "none"}
 
 STYLES = {
     "rounded": "border-radius: 4px;",
-    "rounded-5": "border-radius: 5px;",
-    "rounded-lg": "border-radius: 8px;",
-    "rounded-xl": "border-radius: 12px;",
     "border": "border-width: 1px;",
     "font-bold": "font-weight: bold;",
     "text-windowtext": "color: palette(window-text);",
@@ -103,8 +101,9 @@ def tw(*classes: str):
                 style.append(parsed)
 
         elif c.startswith("text-"):
-            if c[5:].isdigit():
-                style.append(f"font-size: {c[5:]}px;")
+            val = c[5:]
+            if val.isdigit():
+                style.append(f"font-size: {val}px;")
             else:
                 parsed = parse_color(c, "text-", "color")
                 if parsed:
@@ -136,51 +135,43 @@ def tw(*classes: str):
             if parsed:
                 style.append(parsed)
 
+        # rounded
+        elif c.startswith("rounded-"):
+            val = c[8:]
+            if val.isdigit():
+                style.append(f"border-radius: {val}px;")
+
         # Padding (p-, px-, py-, pt-, pb-, pl-, pr-)
         elif c.startswith("p-"):
-            val = c.split("-")[1]
-            style.append(f"padding: {val}px;")
+            style.append(f"padding: {c[2:]}px;")
         elif c.startswith("px-"):
-            val = c.split("-")[1]
-            style.append(f"padding-left: {val}px; padding-right: {val}px;")
+            style.append(f"padding-left: {c[3:]}px; padding-right: {c[3:]}px;")
         elif c.startswith("py-"):
-            val = c.split("-")[1]
-            style.append(f"padding-top: {val}px; padding-bottom: {val}px;")
+            style.append(f"padding-top: {c[3:]}px; padding-bottom: {c[3:]}px;")
         elif c.startswith("pt-"):
-            val = c.split("-")[1]
-            style.append(f"padding-top: {val}px;")
+            style.append(f"padding-top: {c[3:]}px;")
         elif c.startswith("pr-"):
-            val = c.split("-")[1]
-            style.append(f"padding-right: {val}px;")
+            style.append(f"padding-right: {c[3:]}px;")
         elif c.startswith("pb-"):
-            val = c.split("-")[1]
-            style.append(f"padding-bottom: {val}px;")
+            style.append(f"padding-bottom: {c[3:]}px;")
         elif c.startswith("pl-"):
-            val = c.split("-")[1]
-            style.append(f"padding-left: {val}px;")
+            style.append(f"padding-left: {c[3:]}px;")
 
         # Margin (m-, mx-, my-, mt-, mb-, ml-, mr-)
         elif c.startswith("m-"):
-            val = c.split("-")[1]
-            style.append(f"margin: {val}px;")
+            style.append(f"margin: {c[2:]}px;")
         elif c.startswith("mx-"):
-            val = c.split("-")[1]
-            style.append(f"margin-left: {val}px; margin-right: {val}px;")
+            style.append(f"margin-left: {c[3:]}px; margin-right: {c[3:]}px;")
         elif c.startswith("my-"):
-            val = c.split("-")[1]
-            style.append(f"margin-top: {val}px; margin-bottom: {val}px;")
+            style.append(f"margin-top: {c[3:]}px; margin-bottom: {c[3:]}px;")
         elif c.startswith("mt-"):
-            val = c.split("-")[1]
-            style.append(f"margin-top: {val}px;")
+            style.append(f"margin-top: {c[3:]}px;")
         elif c.startswith("mr-"):
-            val = c.split("-")[1]
-            style.append(f"margin-right: {val}px;")
+            style.append(f"margin-right: {c[3:]}px;")
         elif c.startswith("mb-"):
-            val = c.split("-")[1]
-            style.append(f"margin-bottom: {val}px;")
+            style.append(f"margin-bottom: {c[3:]}px;")
         elif c.startswith("ml-"):
-            val = c.split("-")[1]
-            style.append(f"margin-left: {val}px;")
+            style.append(f"margin-left: {c[3:]}px;")
 
         # Width and Height
         elif c.startswith("h-"):

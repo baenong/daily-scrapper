@@ -15,9 +15,12 @@ load_dotenv(os.path.join(base_dir, ".env"))
 from PySide6.QtWidgets import QApplication, QSplashScreen
 from PySide6.QtGui import QFontDatabase, QFont, QIcon, QColor, QPainter, QPixmap
 from PySide6.QtCore import Qt, QRect
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from ui.main_window import DailyScraper
 from core import db_manager
+
+APP_SERVER_NAME = "G_Daily_Single_Instance_Lock"
 
 
 def resource_path(relative_path):
@@ -38,20 +41,10 @@ class CustomSplashScreen(QSplashScreen):
         pixmap = self.pixmap()
         painter.drawPixmap(0, 0, pixmap)
 
-        text = self.message()
-        if not text:
-            return
-
         rect = self.rect()  # 전체 크기
-        text_rect = QRect(0, rect.height() - 50, rect.width(), 30)
-        painter.fillRect(text_rect, QColor(0, 0, 0, 180))
-        painter.setPen(Qt.GlobalColor.white)  # 글씨 색상
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
 
         # copyright part
-        copyright_font = QFont("Arial", 8)
-        painter.setFont(copyright_font)
+        painter.setFont(QFont("Arial", 8))
         rect = self.rect()
         copyright_rect = QRect(0, rect.height() - 20, rect.width(), 20)
         painter.fillRect(copyright_rect, QColor(0, 0, 0, 180))
@@ -59,6 +52,15 @@ class CustomSplashScreen(QSplashScreen):
         copyright_text = "Copyright 2026. 행정지원과 안민수 All rights reserved."
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         painter.drawText(copyright_rect, Qt.AlignmentFlag.AlignCenter, copyright_text)
+
+        text = self.message()
+        if text:
+            self.setFont(QFont("Malgun Gothic", 10, QFont.Weight.Bold))
+            painter.setFont(self.font())
+            text_rect = QRect(0, rect.height() - 50, rect.width(), 30)
+            painter.fillRect(text_rect, QColor(0, 0, 0, 180))
+            painter.setPen(Qt.GlobalColor.white)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
 
     def showMessage(self, text):
         super().showMessage(
@@ -68,14 +70,33 @@ class CustomSplashScreen(QSplashScreen):
         )
 
 
-if __name__ == "__main__":
+def main():
+    app = QApplication(sys.argv)
+
+    # Single Instance
+    socket = QLocalSocket()
+    socket.connectToServer(APP_SERVER_NAME)
+
+    if socket.waitForConnected(500):
+        socket.write(b"WAKE_UP")
+        socket.flush()
+        socket.waitForBytesWritten(500)
+        socket.disconnectFromServer()
+        sys.exit(0)
+
+    QLocalServer.removeServer(APP_SERVER_NAME)
+    server = QLocalServer()
+    server.listen(APP_SERVER_NAME)
+
+    # separate icon taskbar
     if sys.platform == "win32":
-        myappid = "ahnminsoo.daily-scraper.v1.0"
+        myappid = "ahnminsoo.g-daily.v1.3"
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-    app = QApplication(sys.argv)
+    # initialize database
     db_manager.init_db()
 
+    # splash screen
     splash_path = resource_path(os.path.join("resources", "logo.png"))
     splash_pix = QPixmap(splash_path)
 
@@ -88,6 +109,7 @@ if __name__ == "__main__":
     splash.show()
     app.processEvents()
 
+    # load resources
     font_path = resource_path(os.path.join("resources", "PretendardVariable.ttf"))
     icon_path = resource_path(os.path.join("resources", "icon.ico"))
 
@@ -111,7 +133,23 @@ if __name__ == "__main__":
     app.processEvents()
 
     window = DailyScraper()
+
+    def on_new_connection():
+        client = server.nextPendingConnection()
+        if client:
+            if client.waitForReadyRead(500):
+                msg = client.readAll().data()
+                if msg == b"WAKE_UP":
+                    window.bring_to_front()
+            client.disconnectFromServer()
+
+    server.newConnection.connect(on_new_connection)
+
     window.show()
     splash.finish(window)
 
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

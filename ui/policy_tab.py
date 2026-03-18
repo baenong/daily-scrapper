@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QThreadPool
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime, timezone
 
@@ -26,9 +26,8 @@ class PolicyTab(QWidget):
         self.settings = settings
         self.is_loaded = False
         self.departments = db_manager.load_departments()
-        self.department_checkboxes = []  # 체크박스 객체 보관용
+        self.department_checkboxes = []
         self.setup_ui()
-        # self.search_policy()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -142,13 +141,11 @@ class PolicyTab(QWidget):
         )
 
         # 2. 비동기 백그라운드 호출
-        self.worker = AsyncTask(
-            self._fetch_policy_in_background, selected_urls, parent=self
-        )
-        self.worker.result_ready.connect(self._on_policy_loaded)
-        self.worker.error_occurred.connect(self._on_policy_error)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.start()
+        self.worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
+        self.worker.signals.result_ready.connect(self._on_policy_loaded)
+        self.worker.signals.error_occurred.connect(self._on_policy_error)
+
+        QThreadPool.globalInstance().start(self.worker)
 
     def _fetch_policy_in_background(self, rss_urls):
         return policy_scraper.get_policy_briefings(rss_urls, limit=50)
@@ -188,7 +185,7 @@ class PolicyTab(QWidget):
 
     def _on_policy_error(self, error_msg):
         self.search_btn.setEnabled(True)
-        self.search_btn.setText("선택 부처 브리핑 조회")
+        self.search_btn.setText("🔍 정책 브리핑 조회")
         self.policy_list_view.clear()
         self.policy_list_view.addItem("❌ 브리핑 조회 중 오류가 발생했습니다.")
         print(f"정책브리핑 로딩 에러: {error_msg}")

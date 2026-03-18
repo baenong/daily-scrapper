@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt, Signal, QObject
 
 # core module
-from core import data_manager
 from core import startup_manager
+from core.data_manager import SettingsManager
 from core.style import COLORS, tw, tw_sheet
 
 # Components
@@ -47,10 +47,9 @@ class DailyScraper(QMainWindow):
         self.is_quitting = False
 
         self.setWindowTitle("G-Daily")
-        # self.resize(1600, 900)
 
         # 설정 데이터 불러오기
-        self.settings = data_manager.load_settings()
+        self.settings = SettingsManager.load()
 
         if self.settings.get("window_geometry"):
             self.restoreGeometry(self.settings["window_geometry"])
@@ -87,13 +86,16 @@ class DailyScraper(QMainWindow):
         layout.addWidget(self.footer_widget)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
+        current_style = self.styleSheet()
+        tooltip_style = tw_sheet({"QToolTip": "text-c13 p-2 text-13"})
+        self.setStyleSheet(current_style + "\n" + tooltip_style)
+
         # 투명도 설정
         self.update_background_opacity()
 
         # 글로벌 단축키
         self.hotkey_signal = HotKeySignal()
         self.hotkey_signal.activated.connect(self.bring_to_front)
-
         keyboard.add_hotkey("ctrl+shift+space", self.hotkey_signal.activated.emit)
 
         # 시스템 트레이
@@ -133,7 +135,6 @@ class DailyScraper(QMainWindow):
 
         # 창 투명도 조절
         self.opacity_label = QLabel("  투명도:")
-
         self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self.opacity_slider.setRange(30, 100)  # 30% ~ 100%
         self.opacity_slider.setValue(self.settings.get("window_opacity", 100))
@@ -172,7 +173,7 @@ class DailyScraper(QMainWindow):
     def setup_tray_icon(self):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(self.windowIcon())
-        self.tray_icon.setToolTip("Daily Scraper")
+        self.tray_icon.setToolTip("G-Daily")
 
         tray_menu = QMenu()
 
@@ -341,20 +342,14 @@ class DailyScraper(QMainWindow):
         if value is None:
             value = self.opacity_slider.value()
 
-        is_widget = getattr(self, "is_widget_mode", False)
-
-        if is_widget:
+        if self.is_widget_mode:
             alpha = value
             self.settings["window_opacity"] = value
         else:
             alpha = 100
 
         is_dark = self.settings.get("dark_mode", True)
-
-        if is_dark:
-            bg_color = f"bg-c13-{alpha}"
-        else:
-            bg_color = f"bg-white-{alpha}"
+        bg_color = f"bg-c13-{alpha}" if is_dark else f"bg-white-{alpha}"
 
         self.setStyleSheet(
             tw_sheet(
@@ -371,7 +366,7 @@ class DailyScraper(QMainWindow):
         self.tabs.setCurrentIndex(index)
 
     def bring_to_front(self):
-        if getattr(self, "is_widget_mode", False):
+        if self.is_widget_mode:
             self.toggle_widget_mode()
 
         if self.isMinimized():
@@ -391,14 +386,14 @@ class DailyScraper(QMainWindow):
         2. 위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override
         """
 
-        if not getattr(self, "is_quitting", False):
+        if not self.is_quitting:
             event.ignore()
             self.hide()
 
             # 트레이 최소화 알림
             if hasattr(self, "tray_icon"):
                 self.tray_icon.showMessage(
-                    "Daily Scaper",
+                    "G-Daily",
                     "프로그램 트레이로 최소화되었습니다.\n완전히 종료하려면 아이콘을 우클릭하여 종료해주세요.",
                     QSystemTrayIcon.MessageIcon.Information,
                     2000,
@@ -422,10 +417,9 @@ class DailyScraper(QMainWindow):
             "news_limit": self.settings.get("news_limit", 15),
             "news_cond_and": self.settings.get("news_cond_and", True),
         }
-        data_manager.save_settings(settings_to_save)
+        SettingsManager.save(settings_to_save)
 
         event.accept()
-
         app = QApplication.instance()
         if app:
             app.quit()

@@ -3,7 +3,8 @@ import sys
 import winreg
 
 # 레지스트리에 등록될 프로그램의 고유 이름입니다.
-APP_NAME = "DailyScraper"
+APP_NAME = "G-Daily"
+REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def get_executable_path():
@@ -17,7 +18,7 @@ def is_startup_enabled():
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            REG_PATH,
             0,
             winreg.KEY_READ,
         ) as key:
@@ -32,7 +33,7 @@ def set_startup(enable=True):
     try:
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            REG_PATH,
             0,
             winreg.KEY_SET_VALUE,
         ) as key:

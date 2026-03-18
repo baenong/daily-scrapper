@@ -1,6 +1,6 @@
 [project]
-name = "daily-scrapper"
-version = "0.1.0"
+name = "g-daily"
+version = "1.0.3"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"

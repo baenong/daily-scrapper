@@ -9,13 +9,14 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QThreadPool
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 from core import law_scraper, db_manager
 from core.style import tw_sheet, COLORS
+from core.signals import global_signals
 from core.worker import AsyncTask
 
 
@@ -27,7 +28,6 @@ class LawTab(QWidget):
         self.settings = settings
         self.is_loaded = False
         self.setup_ui()
-        # self.refresh_laws()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -111,12 +111,10 @@ class LawTab(QWidget):
                     laws.append({"text": text, "checked": is_checked})
 
         db_manager.save_law_keywords(laws)
+        global_signals.law_keyword_updated.emit()
 
     def refresh_laws(self):
         self.law_table.setRowCount(0)
-        self.law_refresh_btn.setEnabled(False)
-        self.law_refresh_btn.setText("⏳ 법령 정보 조회 중...")
-
         law_names = []
         for i in range(self.law_list_layout.count()):
             item = self.law_list_layout.itemAt(i).widget()
@@ -125,32 +123,37 @@ class LawTab(QWidget):
                 if law_name:
                     law_names.append(law_name)
 
+        if not law_name:
+            return
+
+        self.law_refresh_btn.setEnabled(False)
+        self.law_refresh_btn.setText("⏳ 법령 정보 조회 중...")
+
         # 백그라운드 작업 시작
-        self.worker = AsyncTask(self._fetch_laws_in_background, law_names, parent=self)
-        self.worker.result_ready.connect(self._on_laws_loaded)
-        self.worker.error_occurred.connect(self._on_laws_error)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.start()
+        self.worker = AsyncTask(self._fetch_laws_in_background, law_names)
+        self.worker.signals.result_ready.connect(self._on_laws_loaded)
+        self.worker.signals.error_occurred.connect(self._on_laws_error)
+
+        QThreadPool.globalInstance().start(self.worker)
 
     def _fetch_laws_in_background(self, law_names):
+        raw_infos = law_scraper.get_laws_by_keywords(law_names)
+
         all_law_infos = []
         law_keys = set()
 
-        for law_name in law_names:
-            infos = law_scraper.get_law_group_info(law_name)
-            if infos:
-                for info in infos:
-                    unique_key = info.get("serial")
-                    if unique_key not in law_keys:
-                        law_keys.add(unique_key)
-                        all_law_infos.append(info)
+        for info in raw_infos:
+            unique_key = info.get("serial")
+            if unique_key not in law_keys:
+                law_keys.add(unique_key)
+                all_law_infos.append(info)
 
         all_law_infos.sort(key=lambda x: x["enforce_date"], reverse=True)
         return all_law_infos
 
     def _on_laws_loaded(self, all_law_infos):
         self.law_refresh_btn.setEnabled(True)
-        self.law_refresh_btn.setText("선택 법령 정보 조회")
+        self.law_refresh_btn.setText("🔍 법령 정보 조회")
         self.law_table.setRowCount(0)
 
         today_str = datetime.now().strftime("%Y.%m.%d")

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
 )
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QThreadPool
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime, timezone
 
@@ -35,7 +35,6 @@ class NewsTab(QWidget):
         self.settings = settings
         self.is_loaded = False
         self.setup_ui()
-        # self.search_news()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -170,8 +169,7 @@ class NewsTab(QWidget):
                 raw_text = item.line_edit.text()
                 words = [w.strip() for w in raw_text.split(",") if w.strip()]
                 if words:
-                    group_query = " ".join(words)
-                    selected_groups.append(group_query)
+                    selected_groups.append(" ".join(words))
 
         if not selected_groups:
             self.news_list_view.addItem("⚠️ 검색할 키워드를 추가하거나 체크해주세요.")
@@ -188,12 +186,11 @@ class NewsTab(QWidget):
             selected_groups,
             is_and_cond,
             self.news_limit.value(),
-            parent=self,
         )
-        self.worker.result_ready.connect(self._on_news_loaded)
-        self.worker.error_occurred.connect(self._on_news_error)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.start()
+        self.worker.signals.result_ready.connect(self._on_news_loaded)
+        self.worker.signals.error_occurred.connect(self._on_news_error)
+
+        QThreadPool.globalInstance().start(self.worker)
 
     def _fetch_news_in_background(self, selected_groups, is_and_cond, limit):
         if is_and_cond:
@@ -216,7 +213,7 @@ class NewsTab(QWidget):
             item = QListWidgetItem(self.news_list_view)
             item.setData(100, news["link"])
 
-            filter_text = f"{news["title"]} {news["source"]}".lower()
+            filter_text = f"{news['title']} {news['source']}".lower()
             item.setData(101, filter_text)
 
             custom_widget = ArticleItemWidget(

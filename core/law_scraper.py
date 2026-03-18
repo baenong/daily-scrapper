@@ -2,8 +2,12 @@ import os
 import requests
 import urllib.parse
 import urllib3
+import concurrent.futures
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+session = requests.Session()
+session.verify = False
 
 
 def format_date(date_str):
@@ -28,42 +32,72 @@ def get_law_group_info(law_name):
     }
 
     try:
-        response = requests.get(url, params=params, verify=False)
+        response = session.get(url, params=params, timeout=10)
         response.raise_for_status()
+
         data = response.json()
+        if not data or "LawSearch" not in data or "law" not in data["LawSearch"]:
+            return []
+
+        law_list = data["LawSearch"]["law"]
+        if isinstance(law_list, dict):
+            law_list = [law_list]
+
         results = []
 
-        if "LawSearch" in data and "law" in data["LawSearch"]:
+        for item in law_list:
+            item_name = item.get("법령명한글", "정보 없음")
+            law_serial = item.get("법령일련번호", "")
 
-            law_list = data["LawSearch"]["law"]
+            encoded_name = urllib.parse.quote(item_name)
+            link = f"https://www.law.go.kr/법령/{encoded_name}"
 
-            if isinstance(law_list, dict):
-                law_list = [law_list]
+            unique_key = law_serial if law_serial else link
 
-            for item in law_list:
-                item_name = item.get("법령명한글", "정보 없음")
-                law_serial = item.get("법령일련번호", "")
+            results.append(
+                {
+                    "serial": unique_key,
+                    "name": item_name,
+                    "enforce_date": format_date(item.get("시행일자", "정보 없음")),
+                    "link": link,
+                }
+            )
 
-                encoded_name = urllib.parse.quote(item_name)
-                link = f"https://www.law.go.kr/법령/{encoded_name}"
+        return results
 
-                unique_key = law_serial if law_serial else link
-
-                results.append(
-                    {
-                        "serial": unique_key,
-                        "name": item_name,
-                        "enforce_date": format_date(item.get("시행일자", "정보 없음")),
-                        "link": link,
-                    }
-                )
-
-            return results
-
-        print(f"'{law_name}'에 대한 검색 결과가 없거나 JSON 구조가 다릅니다.")
-        print(f"참고용 서버 응답 데이터: {data}")
+    except requests.exceptions.RequestException as e:
+        print(f"법령 API 네트워크 오류: {e}")
         return []
-
+    except ValueError:
+        print("법령 API 응답이 올바른 JSON 형식이 아닙니다.")
+        return []
     except Exception as e:
-        print(f"법령 정보를 가져오는 중 오류 발생: {e}")
+        print(f"법령 정보를 가져오는 중 예기치 않은 오류 발생: {e}")
         return []
+
+
+def get_laws_by_keywords(keywords_list):
+    """
+    여러 개의 법령 키워드를 받아 멀티스레딩으로 빠르게 검색 결과를 취합합니다.
+    """
+    if not keywords_list:
+        return []
+
+    all_results = []
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(keywords_list), 10)
+    ) as executor:
+        futures = [executor.submit(get_law_group_info, name) for name in keywords_list]
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                infos = future.result()
+                if infos:
+                    all_results.extend(
+                        infos
+                    )  # 2차원 배열을 1차원으로 평탄화(Flatten)하여 합침
+            except Exception as e:
+                print(f"법령 그룹 병렬 검색 중 오류: {e}")
+
+    return all_results

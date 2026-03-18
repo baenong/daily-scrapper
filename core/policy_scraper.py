@@ -2,44 +2,31 @@ import urllib3
 import feedparser
 import requests
 import html
+import concurrent.futures
 from email.utils import parsedate_to_datetime
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+session = requests.Session()
+session.verify = False
 
-def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
-    if not rss_urls:
-        return []
 
-    dept_feeds = []
-
-    for url in rss_urls:
-        dept_entries = []
-        try:
-            response = requests.get(url, verify=False, timeout=10)
-            response.raise_for_status()
-
-            feed = feedparser.parse(response.content)
-            source_title = feed.feed.get("title", "정책브리핑")
-        except Exception as e:
-            print(f"정책 RSS를 가져오는 중 오류 발생: {e}")
-            continue
+def _fetch_single_policy_rss(url):
+    """단일 RSS Parsing"""
+    dept_entries = []
+    try:
+        response = session.get(url, timeout=10)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+        source_title = feed.feed.get("title", "정책브리핑")
 
         for entry in feed.entries:
-            try:
-                published_raw = getattr(entry, "published", "")
-
-                if not published_raw:
-                    continue
-
-                pub_dt = parsedate_to_datetime(published_raw)
-
-            except Exception:
+            published_raw = getattr(entry, "published", "")
+            if not published_raw:
                 continue
 
-            # 특수문자 보정
-            raw_title = getattr(entry, "title", "")
-            title = html.unescape(raw_title)
+            pub_dt = parsedate_to_datetime(published_raw)
+            title = html.unescape(getattr(entry, "title", ""))
 
             dept_entries.append(
                 {
@@ -52,21 +39,37 @@ def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
             )
 
         dept_entries.sort(key=lambda x: x["published_dt"], reverse=True)
-        if dept_entries:
-            dept_feeds.append(dept_entries)
+        return dept_entries
+    except Exception as e:
+        print(f"[{url}] 정책 RSS 가져오는 중 오류 발생: {e}")
+        return []
+
+
+def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
+    if not rss_urls:
+        return []
+
+    dept_feeds = []
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(rss_urls), 10)
+    ) as executor:
+        futures = [executor.submit(_fetch_single_policy_rss, url) for url in rss_urls]
+
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            if result:
+                dept_feeds.append(result)
 
     final_selection = []
+    leftover_pool = []
 
     # 각 부처별 최저 갯수
     for dept_entries in dept_feeds:
-        guaranteed_chunk = dept_entries[:min_guarantee]
-        final_selection.extend(guaranteed_chunk)
-        del dept_entries[:min_guarantee]
+        final_selection.extend(dept_entries[:min_guarantee])
+        leftover_pool.extend(dept_entries)
 
     # 최저 갯수 제외한 나머지 브리핑 자료 추가
-    leftover_pool = []
-    for dept_entries in dept_feeds:
-        leftover_pool.extend(dept_entries)
     leftover_pool.sort(key=lambda x: x["published_dt"], reverse=True)
 
     remaining_slots = limit - len(final_selection)
@@ -74,5 +77,4 @@ def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
         final_selection.extend(leftover_pool[:remaining_slots])
 
     final_selection.sort(key=lambda x: x["published_dt"], reverse=True)
-
     return final_selection[:limit]

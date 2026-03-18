@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QComboBox,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
@@ -34,7 +35,7 @@ class RoadmapCanvas(QWidget):
         self.target_year = QDate.currentDate().year()
         self.overlay_widgets = []
 
-        self.group_width = 180
+        self.g_width = 180
 
     def update_data(self, year, groups, schedules):
         self.target_year = year
@@ -52,7 +53,7 @@ class RoadmapCanvas(QWidget):
 
         width = self.width()
         height = self.height()
-        chart_width = width - self.group_width
+        chart_width = width - self.g_width
 
         text_color = self.palette().color(QPalette.ColorRole.WindowText)
         line_color = QColor(128, 128, 128, 60)
@@ -69,29 +70,22 @@ class RoadmapCanvas(QWidget):
         for month in range(1, 13):
             start_date = QDate(self.target_year, month, 1)
             day_offset = QDate(self.target_year, 1, 1).daysTo(start_date)
-            x = self.group_width + int((day_offset / days_in_year) * chart_width)
+            x = self.g_width + int((day_offset / days_in_year) * chart_width)
 
-            # 세로선
             painter.drawLine(x, 0, x, height)
-
-            # 월 텍스트
             painter.setPen(QPen(text_color, 1))
             painter.drawText(x + 5, 20, f"{month}월")
             painter.setPen(QPen(line_color, 1))
 
         # 2. 그룹별 가로 구역 그리기
         y_offset = 30
-        group_height = (height - 30) / max(1, len(self.groups))
+        g_height = (height - 30) / max(1, len(self.groups))
 
         for g in self.groups:
-            # 좌측 그룹 이름 영역 배경
-            painter.fillRect(
-                0, int(y_offset), self.group_width, int(group_height), group_bg
-            )
-
+            painter.fillRect(0, int(y_offset), self.g_width, int(g_height), group_bg)
             painter.setPen(QPen(text_color, 1))
             text_rect = QRect(
-                10, int(y_offset + 5), self.group_width - 10, int(group_height - 10)
+                10, int(y_offset + 5), self.g_width - 10, int(g_height - 10)
             )
             painter.drawText(
                 text_rect,
@@ -104,20 +98,20 @@ class RoadmapCanvas(QWidget):
             # 가로 구분선
             painter.setPen(QPen(line_color, 1))
             painter.drawLine(0, int(y_offset), width, int(y_offset))
-            y_offset += group_height
+            y_offset += g_height
 
     def _get_x_pos(self, date_str):
         d = QDate.fromString(date_str, "yyyy-MM-dd")
         if d.year() < self.target_year:
-            return self.group_width
+            return self.g_width
         if d.year() > self.target_year:
             return self.width()
 
         start_of_year = QDate(self.target_year, 1, 1)
         days_in_year = start_of_year.daysInYear()
-        chart_width = self.width() - self.group_width
+        chart_width = self.width() - self.g_width
 
-        return self.group_width + int(
+        return self.g_width + int(
             (start_of_year.daysTo(d) / days_in_year) * chart_width
         )
 
@@ -200,7 +194,7 @@ class RoadmapCanvas(QWidget):
             slots[g_id][slot_idx].append((x_start, visual_end))
 
             # 라벨 위젯 생성
-            y_pos = g_y_map[g_id] + 5 + (slot_idx * 26)
+            y_pos = g_y_map[g_id] + (slot_idx * 26) + 5
 
             is_completed = s.get("is_completed", False)
             bg_hex = QColor(s["color"])
@@ -221,8 +215,8 @@ class RoadmapCanvas(QWidget):
             )
             bar_label.setParent(self)
             bar_label.setGeometry(x_start, int(y_pos), bar_w, 22)
-            bar_label.doubleClicked.connect(self.parent_tab.edit_roadmap_event)
             bar_label.show()
+
             self.overlay_widgets.append(bar_label)
 
             # Floating Text
@@ -232,11 +226,9 @@ class RoadmapCanvas(QWidget):
                     tw("text-windowtext", "bg-transparent", "text-13")
                 )
                 text_label.setParent(self)
-                text_label.setGeometry(
-                    x_start + bar_w + 3, int(y_pos), text_width + 10, 22
-                )
-                text_label.doubleClicked.connect(self.parent_tab.edit_roadmap_event)
+                text_label.setGeometry(bar_right_x, int(y_pos), text_width + 10, 22)
                 text_label.show()
+
                 self.overlay_widgets.append(text_label)
 
 
@@ -250,7 +242,6 @@ class RoadmapTab(QWidget):
         self.setup_ui()
         global_signals.schedule_updated.connect(self.refresh_data)
         global_signals.roadmap_group_updated.connect(self.refresh_data)
-        # self.refresh_data()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -272,13 +263,9 @@ class RoadmapTab(QWidget):
         self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", COLORS["blue-500"])
         self.group_mgr_btn.clicked.connect(self.open_group_manager)
 
-        self.refresh_btn = StyledButton("🔄 새로고침", COLORS["green-500"])
-        self.refresh_btn.clicked.connect(self.refresh_data)
-
         top_layout.addStretch()
         top_layout.addWidget(self.year_combo)
         top_layout.addWidget(self.group_mgr_btn)
-        top_layout.addWidget(self.refresh_btn)
         layout.addLayout(top_layout)
 
         # --- [메인: 간트 차트 영역] ---
@@ -295,16 +282,13 @@ class RoadmapTab(QWidget):
     def open_group_manager(self):
         dialog = GroupManagerDialog(self)
         dialog.exec()
-        self.refresh_data()
 
     def refresh_data(self):
         year = int(self.year_combo.currentText().replace("년", ""))
 
-        # DB에서 데이터 가져오기
         groups = db_manager.get_roadmap_groups()
         all_schedules = db_manager.get_schedules()
 
-        # 로드맵으로 지정되었고, 해당 연도에 걸쳐있는 일정만 필터링
         roadmap_schedules = []
         for s in all_schedules:
             if not s.get("is_roadmap", False):
@@ -318,14 +302,6 @@ class RoadmapTab(QWidget):
 
         roadmap_schedules.sort(key=lambda x: (x["start_date"], x["end_date"]))
         self.canvas.update_data(year, groups, roadmap_schedules)
-
-    def edit_roadmap_event(self, schedule_data):
-        """막대를 더블클릭하면 호출됩니다."""
-        dialog = EventDialog(
-            schedule_data["start_date"], schedule_data=schedule_data, parent=self
-        )
-        if dialog.exec():
-            self.refresh_data()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

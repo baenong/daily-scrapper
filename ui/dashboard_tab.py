@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QHBoxLayout,
 )
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QThreadPool
 from datetime import datetime
 
 # 공통 부품 및 코어 모듈 불러오기
@@ -47,7 +47,7 @@ class DashboardCard(QFrame):
         # 카드 느낌을 내기 위해 테두리와 배경색을 살짝 줍니다.
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
-            tw_sheet({"DashboardCard": "bg-c80-5 rounded-lg border-b border-c80-20"})
+            tw_sheet({"DashboardCard": "bg-c80-5 rounded-8 border-b border-c80-20"})
         )
 
         layout = QVBoxLayout(self)
@@ -141,6 +141,10 @@ class DashboardTab(QWidget):
 
     def load_dashboard_data(self):
         """데이터 로딩을 시작하고 UI를 로딩 상태로 변경합니다."""
+        if getattr(self, "is_fetching", False):
+            return
+        self.is_fetching = True
+
         self.todo_card.list_widget.clear()
         self.news_card.list_widget.clear()
         self.policy_card.list_widget.clear()
@@ -152,15 +156,22 @@ class DashboardTab(QWidget):
         self.law_card.add_item("⏳ 데이터 불러오는 중...")
 
         # 백그라운드 스레드 생성 및 실행
-        self.worker = AsyncTask(self._fetch_data_in_background, parent=self)
-        self.worker.result_ready.connect(self._on_data_loaded)
-        self.worker.error_occurred.connect(self._on_data_error)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.start()
+        self.worker = AsyncTask(self._fetch_data_in_background)
+        self.worker.signals.result_ready.connect(self._on_data_loaded)
+        self.worker.signals.error_occurred.connect(self._on_data_error)
+
+        QThreadPool.globalInstance().start(self.worker)
 
     def _fetch_data_in_background(self):
         """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
-        result = {"todos": [], "news": [], "policy": [], "laws": []}
+        result = {
+            "todos": [],
+            "news": [],
+            "policy": [],
+            "laws": [],
+            "has_news_kw": False,
+            "has_law_kw": False,
+        }
 
         today_dt = datetime.now()
         today_qdate = QDate.currentDate()
@@ -175,6 +186,7 @@ class DashboardTab(QWidget):
 
         # 2. 뉴스 데이터 수집
         db_news_kws = db_manager.load_news_keywords()
+        result["has_news_kw"] = len(db_news_kws) > 0
 
         selected_groups = []
         for kw in db_news_kws:
@@ -205,15 +217,17 @@ class DashboardTab(QWidget):
 
         # 4. 법령 데이터 수집
         db_law_kws = db_manager.load_law_keywords()
+        result["has_law_kw"] = len(db_law_kws) > 0
+
         law_keywords = [law["text"] for law in db_law_kws if law.get("checked", True)]
         if law_keywords:
             today_laws = []
-            for law_name in law_keywords:
-                infos = law_scraper.get_law_group_info(law_name)
-                if infos:
-                    for info in infos:
-                        if info["enforce_date"] == today_str_law:
-                            today_laws.append(info["name"])
+            all_infos = law_scraper.get_laws_by_keywords(law_keywords)
+
+            for info in all_infos:
+                if info["enforce_date"] == today_str_law:
+                    today_laws.append(info["name"])
+
             result["laws"] = list(set(today_laws))
 
         return result
@@ -222,6 +236,8 @@ class DashboardTab(QWidget):
         """백그라운드 작업이 끝나면 신호를 받아 UI를 업데이트합니다."""
         # 1. 일정 업데이트
         self.todo_card.list_widget.clear()
+        self.is_fetching = False
+
         if not data["todos"]:
             self.todo_card.add_item("❌ 오늘 등록된 일정이 없습니다.")
         else:
@@ -235,7 +251,7 @@ class DashboardTab(QWidget):
 
         # 2. 뉴스 업데이트
         self.news_card.list_widget.clear()
-        if not data["news"] and not db_manager.load_news_keywords():
+        if not data["news"] and not data["has_news_kw"]:
             self.news_card.add_item("설정된 뉴스 키워드가 없습니다.")
         elif not data["news"]:
             self.news_card.add_item("관련 뉴스가 없습니다.")
@@ -253,7 +269,7 @@ class DashboardTab(QWidget):
 
         # 4. 법령 업데이트
         self.law_card.list_widget.clear()
-        if not data["laws"] and not db_manager.load_law_keywords():
+        if not data["laws"] and not data["has_law_kw"]:
             self.law_card.add_item("설정된 법령 키워드가 없습니다.")
         elif not data["laws"]:
             self.law_card.add_item("❌ 오늘 시행/개정되는 법령이 없습니다.")
@@ -263,11 +279,15 @@ class DashboardTab(QWidget):
 
     def _on_data_error(self, error_msg):
         """데이터 로딩 중 에러가 발생했을 때의 처리입니다."""
+        self.is_fetching = False
+
         self.todo_card.list_widget.clear()
         self.news_card.list_widget.clear()
+        self.policy_card.list_widget.clear()
         self.law_card.list_widget.clear()
 
         self.todo_card.add_item("데이터 로드 실패")
         self.news_card.add_item("데이터 로드 실패")
+        self.policy_card.add_item("데이터 로드 실패")
         self.law_card.add_item("데이터 로드 실패")
         print(f"대시보드 로딩 에러: {error_msg}")

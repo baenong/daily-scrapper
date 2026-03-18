@@ -1,8 +1,12 @@
 import sqlite3
 import os
 import sys
-
 from contextlib import closing
+
+# Constants
+CAT_GOV = "정부부처"
+CAT_MEDIA = "언론사"
+GROUP_UNASSIGNED = "미지정"
 
 
 def get_db_path():
@@ -14,14 +18,17 @@ def get_db_path():
 
 
 def get_connection():
-    conn = sqlite3.connect(get_db_path())
+    conn = sqlite3.connect(get_db_path(), timeout=10.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 
 def init_db():
     with closing(get_connection()) as conn:
         with conn:
+            current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS news_keywords (
@@ -72,44 +79,66 @@ def init_db():
                 """
             )
 
-            # 이전 버전과의 호환성을 위한 마이그레이션 코드
-            cursor = conn.execute("PRAGMA table_info(schedules)")
-            columns = [info[1] for info in cursor.fetchall()]
-            if "description" not in columns:
-                conn.execute("ALTER TABLE schedules ADD COLUMN description TEXT")
-
-            if "is_roadmap" not in columns:
-                conn.execute(
-                    "ALTER TABLE schedules ADD COLUMN is_roadmap INTEGER DEFAULT 0"
-                )
-
-            if "group_id" not in columns:
-                conn.execute("ALTER TABLE schedules ADD COLUMN group_id INTEGER")
-
-            # 미지정 강제 등록
-            unassigned_count = conn.execute(
-                "SELECT COUNT(*) FROM roadmap_groups WHERE name='미지정'"
-            ).fetchone()[0]
-            if unassigned_count == 0:
-                conn.execute(
-                    "INSERT INTO roadmap_groups (name, color) VALUES ('미지정', '#A8A8A8')"
-                )
-
-            # 2026. 3. 10. 정책브리핑
+            # 정책브리핑
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS departments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     rss_url TEXT NOT NULL,
-                    is_checked INTEGER DEFAULT 1
+                    is_checked INTEGER DEFAULT 1,
+                    category TEXT DEFAULT '정부부처'
                 )
                 """
             )
 
-            count = conn.execute("SELECT COUNT(*) FROM departments").fetchone()[0]
+            # v1.03 Version Migration
+            if current_version < 1:
+
+                # Departments Table Migration (Category)
+                cursor = conn.execute("PRAGMA table_info(departments)")
+                columns = [info[1] for info in cursor.fetchall()]
+
+                if "category" not in columns:
+                    conn.execute(
+                        f"ALTER TABLE departments ADD COLUMN category TEXT DEFAULT '{CAT_GOV}'",
+                    )
+
+                # Schedule Table Migration (Description, RoadMap)
+                cursor = conn.execute("PRAGMA table_info(schedules)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if "description" not in columns:
+                    conn.execute("ALTER TABLE schedules ADD COLUMN description TEXT")
+
+                if "is_roadmap" not in columns:
+                    conn.execute(
+                        "ALTER TABLE schedules ADD COLUMN is_roadmap INTEGER DEFAULT 0"
+                    )
+
+                if "group_id" not in columns:
+                    conn.execute("ALTER TABLE schedules ADD COLUMN group_id INTEGER")
+
+                conn.execute("PRAGMA user_version = 1")
+
+            # ==========================================================================
+            # Input Default Value
+            # ==========================================================================
+            unassigned_count = conn.execute(
+                "SELECT COUNT(*) FROM roadmap_groups WHERE name=?",
+                (GROUP_UNASSIGNED,),
+            ).fetchone()[0]
+            if unassigned_count == 0:
+                conn.execute(
+                    "INSERT INTO roadmap_groups (name, color) VALUES (?, '#A8A8A8')",
+                    (GROUP_UNASSIGNED,),
+                )
+
+            count = conn.execute(
+                "SELECT COUNT(*) FROM departments WHERE category = ?", (CAT_GOV,)
+            ).fetchone()[0]
+
             if count == 0:
-                # ※ korea.kr의 실제 RSS 주소 체계에 맞춰 추후 자유롭게 수정하시면 됩니다.
+                # ※ korea.kr의 RSS 주소
                 default_departments = [
                     ("정책뉴스", "https://www.korea.kr/rss/policy.xml"),
                     ("보도자료", "https://www.korea.kr/rss/pressrelease.xml"),
@@ -139,19 +168,21 @@ def init_db():
                     ("국가데이터처", "https://www.korea.kr/rss/dept_mods.xml"),
                 ]
                 conn.executemany(
-                    "INSERT INTO departments (name, rss_url, is_checked) VALUES (?, ?, 0)",
-                    default_departments,
+                    "INSERT INTO departments (name, rss_url, is_checked, category) VALUES (?, ?, 0, ?)",
+                    [(*dept, CAT_GOV) for dept in default_departments],
                 )
 
-            # Setting
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS app_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
+            media_count = conn.execute(
+                "SELECT COUNT(*) FROM departments WHERE category = ?", (CAT_MEDIA,)
+            ).fetchone()[0]
+            if media_count == 0:
+                default_media = [
+                    ("전북일보", "https://www.jjan.kr/news/rssAll"),
+                ]
+                conn.executemany(
+                    "INSERT INTO departments (name, rss_url, is_checked, category) VALUES (?, ?, 0, ?)",
+                    [(*media, CAT_MEDIA) for media in default_media],
                 )
-                """
-            )
 
 
 def add_schedule(
@@ -269,45 +300,51 @@ def get_schedules():
 
 
 # Keyword Functions
-def save_news_keywords(keywords_list):
+def _save_keywords(table_name, items_list):
     with closing(get_connection()) as conn:
         with conn:
-            conn.execute("DELETE FROM news_keywords")
-            data_to_insert = [(kw["text"], int(kw["checked"])) for kw in keywords_list]
+            conn.execute(f"DELETE FROM {table_name}")
+            data_to_insert = [
+                (item["text"], int(item["checked"])) for item in items_list
+            ]
             conn.executemany(
-                "INSERT INTO news_keywords (keyword, is_active) VALUES (?, ?)",
+                f"INSERT INTO {table_name} (keyword, is_active) VALUES (?, ?)",
                 data_to_insert,
             )
+
+
+def _load_keywords(table_name):
+    with closing(get_connection()) as conn:
+        rows = conn.execute(f"SELECT keyword, is_active FROM {table_name}").fetchall()
+        return [{"text": r["keyword"], "checked": bool(r["is_active"])} for r in rows]
+
+
+def save_news_keywords(keywords_list):
+    _save_keywords("news_keywords", keywords_list)
 
 
 def load_news_keywords():
-    with closing(get_connection()) as conn:
-        rows = conn.execute("SELECT keyword, is_active FROM news_keywords").fetchall()
-        return [{"text": r["keyword"], "checked": bool(r["is_active"])} for r in rows]
+    return _load_keywords("news_keywords")
 
 
 def save_law_keywords(laws_list):
-    with closing(get_connection()) as conn:
-        with conn:
-            conn.execute("DELETE FROM law_keywords")
-            data_to_insert = [(law["text"], int(law["checked"])) for law in laws_list]
-            conn.executemany(
-                "INSERT INTO law_keywords (keyword, is_active) VALUES (?, ?)",
-                data_to_insert,
-            )
+    _save_keywords("law_keywords", laws_list)
 
 
 def load_law_keywords():
-    with closing(get_connection()) as conn:
-        rows = conn.execute("SELECT keyword, is_active FROM law_keywords").fetchall()
-        return [{"text": r["keyword"], "checked": bool(r["is_active"])} for r in rows]
+    return _load_keywords("law_keywords")
 
 
-def load_departments():
+# Policy Brief
+def load_departments(is_media=False):
     with closing(get_connection()) as conn:
+        category_name = CAT_MEDIA if is_media else CAT_GOV
+
         rows = conn.execute(
-            "SELECT id, name, rss_url, is_checked FROM departments"
+            "SELECT id, name, rss_url, is_checked FROM departments WHERE category = ?",
+            (category_name,),
         ).fetchall()
+
         return [
             {
                 "id": r["id"],
@@ -355,7 +392,7 @@ def delete_roadmap_group(group_id):
     with closing(get_connection()) as conn:
         with conn:
             row = conn.execute(
-                "SELECT id FROM roadmap_groups WHERE name='미지정'"
+                "SELECT id FROM roadmap_groups WHERE name=?", (GROUP_UNASSIGNED,)
             ).fetchone()
             default_id = row[0] if row else None
 
@@ -371,20 +408,3 @@ def delete_roadmap_group(group_id):
                 )
 
             conn.execute("DELETE FROM roadmap_groups WHERE id=?", (group_id,))
-
-
-def get_setting(key, default_value=None):
-    with closing(get_connection()) as conn:
-        row = conn.execute(
-            "SELECT value FROM app_settings WHERE key = ?", (key,)
-        ).fetchone()
-        return row["value"] if row else default_value
-
-
-def set_setting(key, value):
-    with closing(get_connection()) as conn:
-        with conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
-                (key, str(value)),
-            )
