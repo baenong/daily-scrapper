@@ -58,5 +58,26 @@ def get_news_by_query(query_string, limit=15):
         )
 
     news_list.sort(key=lambda x: x["published_dt"], reverse=True)
-
     return news_list[:limit]
+
+
+def get_news_by_or_query(selected_groups, limit=15):
+    if not selected_groups:
+        return []
+
+    all_news = []
+    seen_links = set()
+
+    for query in selected_groups:
+        try:
+            results = get_news_by_query(query, limit=limit)
+            if results:
+                for news in results:
+                    if news["link"] not in seen_links:
+                        seen_links.add(news["link"])
+                        all_news.append(news)
+        except Exception:
+            continue
+
+    all_news.sort(key=lambda x: x["published_dt"], reverse=True)
+    return all_news[:limit]

@@ -15,6 +15,7 @@ from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 from core import law_scraper, db_manager
+from core.style import tw_sheet, COLORS
 from core.worker import AsyncTask
 
 
@@ -24,8 +25,9 @@ class LawTab(QWidget):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+        self.is_loaded = False
         self.setup_ui()
-        self.refresh_laws()
+        # self.refresh_laws()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -43,7 +45,7 @@ class LawTab(QWidget):
         )
 
         control_layout = QHBoxLayout()
-        self.law_refresh_btn = StyledButton("선택 법령 정보 조회", "#4CAF50")
+        self.law_refresh_btn = StyledButton("선택 법령 정보 조회", COLORS["green-500"])
         self.law_refresh_btn.clicked.connect(self.refresh_laws)
 
         control_layout.addStretch()
@@ -78,7 +80,7 @@ class LawTab(QWidget):
         self.law_table = QTableWidget()
         self.law_table.setColumnCount(2)
         self.law_table.setHorizontalHeaderLabels(["법령명", "시행(예정)일자"])
-        self.law_table.setStyleSheet("QTableWidget::item { padding: 10px; }")
+        self.law_table.setStyleSheet(tw_sheet({"QTableWidget::item": "p-10"}))
         self.law_table.verticalHeader().setDefaultSectionSize(35)
 
         header = self.law_table.horizontalHeader()
@@ -163,7 +165,7 @@ class LawTab(QWidget):
             date_item = QTableWidgetItem(info["enforce_date"])
 
             date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            name_item.setData(Qt.UserRole, info["link"])
+            name_item.setData(Qt.ItemDataRole.UserRole, info["link"])
 
             enforce_date = info["enforce_date"]
 
@@ -189,6 +191,6 @@ class LawTab(QWidget):
     def open_law_link(self, item):
         row = item.row()
         name_item = self.law_table.item(row, 0)
-        url = name_item.data(Qt.UserRole)
+        url = name_item.data(Qt.ItemDataRole.UserRole)
         if url:
             QDesktopServices.openUrl(QUrl(url))

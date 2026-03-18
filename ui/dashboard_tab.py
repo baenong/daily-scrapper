@@ -16,6 +16,7 @@ from ui.components import TitleLabel, StyledButton
 from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper, policy_scraper
 from core.worker import AsyncTask
+from core.style import tw, tw_sheet, COLORS
 
 
 class EllipsisLabel(QLabel):
@@ -25,7 +26,7 @@ class EllipsisLabel(QLabel):
         super().__init__()
         self._original_text = text
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.setStyleSheet("background: transparent; border: none;")
+        self.setStyleSheet(tw("bg-transparent", "border-none"))
 
     def resizeEvent(self, event):
         """위젯의 가로 크기가 변할 때마다 실행되어 글자를 알맞게 자릅니다."""
@@ -46,13 +47,7 @@ class DashboardCard(QFrame):
         # 카드 느낌을 내기 위해 테두리와 배경색을 살짝 줍니다.
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
-            """
-            DashboardCard {
-                background-color: rgba(128, 128, 128, 0.05); 
-                border-radius: 12px; 
-                border: 1px solid rgba(128, 128, 128, 0.2);
-            }
-        """
+            tw_sheet({"DashboardCard": "bg-c80-5 rounded-lg border-b border-c80-20"})
         )
 
         layout = QVBoxLayout(self)
@@ -66,23 +61,21 @@ class DashboardCard(QFrame):
         # 리스트 (정보가 표시될 영역)
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
-            """
-            QListWidget {
-                border: none;
-                background: transparent;
-            }
-            QListWidget::item {
-                padding: 4px 0; /* 항목 위아래 간격을 넓혀서 시원하게 */
-                border-bottom: 1px solid rgba(0, 0, 0, 0.05); /* 항목 사이에 옅은 구분선 추가 */}
-            """
+            tw_sheet(
+                {
+                    "QListWidget": "border-none bg-transparent",
+                    "QListWidget::item": "py-4 border-bb border-black-5",
+                }
+            )
         )
+
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.list_widget.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         layout.addWidget(self.list_widget)
 
-        self.detail_btn = StyledButton(btn_text, "#333333", "#2196F3")
+        self.detail_btn = StyledButton(btn_text, COLORS["c33"], COLORS["blue-500"])
         self.detail_btn.setFixedHeight(40)
         self.detail_btn.clicked.connect(btn_callback)
         layout.addWidget(self.detail_btn)
@@ -104,7 +97,7 @@ class DashboardTab(QWidget):
         super().__init__()
         self.settings = settings
         self.go_to_tab = go_to_tab_callback
-
+        self.is_loaded = False
         self.setup_ui()
         self.load_dashboard_data()
 
@@ -115,9 +108,7 @@ class DashboardTab(QWidget):
         welcome_label = TitleLabel(
             f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요."
         )
-        welcome_label.setStyleSheet(
-            "font-size: 20px; font-weight: bold; margin-bottom: 20px;"
-        )
+        welcome_label.setStyleSheet(tw("text-20", "font-bold", "mb-20"))
         layout.addStretch(1)
         layout.addWidget(welcome_label)
 
@@ -194,17 +185,11 @@ class DashboardTab(QWidget):
 
         if selected_groups:
             is_and_cond = self.settings.get("news_cond_and", True)
-
             if is_and_cond:
                 final_query = " ".join(selected_groups)
+                result["news"] = news_scraper.get_news_by_query(final_query, 5)
             else:
-                or_parts = [f"({g})" for g in selected_groups]
-                final_query = " OR ".join(or_parts)
-
-            try:
-                result["news"] = news_scraper.get_news_by_query(final_query, limit=5)
-            except Exception:
-                pass
+                result["news"] = news_scraper.get_news_by_or_query(selected_groups, 5)
 
         # 3. 정책 브리핑 데이터 수집
         db_policy_kws = db_manager.load_departments()

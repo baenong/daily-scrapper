@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from core import db_manager, policy_scraper
 from core.worker import AsyncTask
+from core.style import COLORS, tw, tw_sheet
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, ArticleItemWidget
 
 
@@ -23,10 +24,11 @@ class PolicyTab(QWidget):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+        self.is_loaded = False
         self.departments = db_manager.load_departments()
         self.department_checkboxes = []  # 체크박스 객체 보관용
         self.setup_ui()
-        self.search_policy()
+        # self.search_policy()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -45,7 +47,7 @@ class PolicyTab(QWidget):
 
         # 컨트롤 영역 (조회 버튼)
         control_layout = QHBoxLayout()
-        self.search_btn = StyledButton("선택 부처 브리핑 조회", "#4CAF50")
+        self.search_btn = StyledButton("🔍 정책 브리핑 조회", COLORS["green-500"])
         self.search_btn.clicked.connect(self.search_policy)
         control_layout.addStretch()
         control_layout.addWidget(self.search_btn)
@@ -80,7 +82,7 @@ class PolicyTab(QWidget):
 
         self.policy_filter_input = QLineEdit()
         self.policy_filter_input.setPlaceholderText("🔍 결과 내 검색 (제목 등)")
-        self.policy_filter_input.setStyleSheet("padding: 5px; border-radius: 4px;")
+        self.policy_filter_input.setStyleSheet(tw("p-5", "rounded"))
         self.policy_filter_input.textChanged.connect(self.filter_policy_list)
 
         filter_layout.addWidget(self.dept_combo)
@@ -88,7 +90,7 @@ class PolicyTab(QWidget):
         right_layout.addLayout(filter_layout)
 
         self.policy_list_view = QListWidget()
-        self.policy_list_view.setStyleSheet("QListWidget::item { padding: 5px; }")
+        self.policy_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-5"}))
         self.policy_list_view.itemDoubleClicked.connect(self.open_link)
         right_layout.addWidget(self.policy_list_view)
 

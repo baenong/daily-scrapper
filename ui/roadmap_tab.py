@@ -4,76 +4,21 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QComboBox,
-    QDialog,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMessageBox,
 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
 
 from core import db_manager
-from ui.components import TitleLabel, StyledButton
-from ui.schedule_tab import EventDialog, ClickableEventLabel
-
-
-class GroupManagerDialog(QDialog):
-    """로드맵 그룹을 추가/삭제하는 관리 팝업입니다."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("로드맵 그룹 관리")
-        self.setFixedSize(300, 400)
-
-        layout = QVBoxLayout(self)
-
-        self.list_widget = QListWidget()
-        layout.addWidget(self.list_widget)
-
-        input_layout = QHBoxLayout()
-        self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("새 그룹 이름")
-        self.add_btn = StyledButton("추가", "#4CAF50")
-        self.add_btn.clicked.connect(self.add_group)
-
-        input_layout.addWidget(self.name_input)
-        input_layout.addWidget(self.add_btn)
-        layout.addLayout(input_layout)
-
-        self.del_btn = StyledButton("선택 그룹 삭제", "#F44336")
-        self.del_btn.clicked.connect(self.delete_group)
-        layout.addWidget(self.del_btn)
-
-        self.load_groups()
-
-    def load_groups(self):
-        self.list_widget.clear()
-        for g in db_manager.get_roadmap_groups():
-            item = QListWidgetItem(g["name"])
-            item.setData(Qt.ItemDataRole.UserRole, g["id"])
-            self.list_widget.addItem(item)
-
-    def add_group(self):
-        name = self.name_input.text().strip()
-        if name:
-            # 색상은 랜덤 배정 또는 기본값 처리 (심화 시 ColorPicker 추가 가능)
-            db_manager.add_roadmap_group(name, "#2196F3")
-            self.name_input.clear()
-            self.load_groups()
-
-    def delete_group(self):
-        item = self.list_widget.currentItem()
-        if item:
-            if item.text() == "미지정":
-                QMessageBox.warning(
-                    self, "삭제 불가", "기본 그룹인 '미지정'은 삭제할 수 없습니다."
-                )
-                return
-
-            group_id = item.data(Qt.ItemDataRole.UserRole)
-            db_manager.delete_roadmap_group(group_id)
-            self.load_groups()
+from core.signals import global_signals
+from core.style import COLORS, tw
+from ui.components import (
+    TitleLabel,
+    DescriptionLabel,
+    StyledButton,
+    ClickableEventLabel,
+    EventDialog,
+    GroupManagerDialog,
+)
 
 
 class RoadmapCanvas(QWidget):
@@ -215,7 +160,7 @@ class RoadmapCanvas(QWidget):
 
             bar_w = max(x_end - x_start, 15)
 
-            title_text = f"{s['title']}"
+            title_text = f"{s['title']} "
             text_width = len(title_text) * 10
             bar_right_x = x_start + bar_w + 3
             put_inside = bar_w >= text_width + 5
@@ -270,8 +215,8 @@ class RoadmapCanvas(QWidget):
             bar_label.setToolTip(f"{s['title']}\n({s['start_date']} ~ {s['end_date']})")
             bar_label.setStyleSheet(
                 f"""
-                background-color: {bg_color}; border-radius: 4px;
-                color: #131313; font-size: 13px; padding: 2px;
+                background-color: {bg_color};
+                {tw("rounded", "text-13", "p-2")}
                 """
             )
             bar_label.setParent(self)
@@ -282,15 +227,9 @@ class RoadmapCanvas(QWidget):
 
             # Floating Text
             if not put_inside:
-                text_color_dyn = (
-                    self.palette().color(QPalette.ColorRole.WindowText).name()
-                )
                 text_label = ClickableEventLabel(s, f" {s['title']}")
                 text_label.setStyleSheet(
-                    f"""
-                    color: {text_color_dyn}; background: transparent; 
-                    font-size: 13px;
-                """
+                    tw("text-windowtext", "bg-transparent", "text-13")
                 )
                 text_label.setParent(self)
                 text_label.setGeometry(
@@ -307,8 +246,11 @@ class RoadmapTab(QWidget):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+        self.is_loaded = False
         self.setup_ui()
-        self.refresh_data()
+        global_signals.schedule_updated.connect(self.refresh_data)
+        global_signals.roadmap_group_updated.connect(self.refresh_data)
+        # self.refresh_data()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -316,19 +258,21 @@ class RoadmapTab(QWidget):
         # --- [상단: 컨트롤 영역] ---
         top_layout = QHBoxLayout()
         top_layout.addWidget(TitleLabel("🗺️ 연간 업무 로드맵"))
+        top_layout.addWidget(DescriptionLabel("연간 로드맵을 표시합니다."))
 
         self.year_combo = QComboBox()
         current_year = QDate.currentDate().year()
         self.year_combo.addItems(
-            [f"{y}년" for y in range(current_year - 2, current_year + 5)]
+            [f"{y}년" for y in range(current_year - 2, current_year + 2)]
         )
         self.year_combo.setCurrentText(f"{current_year}년")
+        self.year_combo.setMinimumWidth(90)
         self.year_combo.currentTextChanged.connect(self.refresh_data)
 
-        self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", "#607D8B")
+        self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", COLORS["blue-500"])
         self.group_mgr_btn.clicked.connect(self.open_group_manager)
 
-        self.refresh_btn = StyledButton("🔄 새로고침", "#2196F3")
+        self.refresh_btn = StyledButton("🔄 새로고침", COLORS["green-500"])
         self.refresh_btn.clicked.connect(self.refresh_data)
 
         top_layout.addStretch()
@@ -341,7 +285,7 @@ class RoadmapTab(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet(
-            "border: 1px solid rgba(128, 128, 128, 0.2); background-color: transparent;"
+            tw("border-b", "border-c80-20", "bg-transparent")
         )
 
         self.canvas = RoadmapCanvas(self)

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 
 from core import news_scraper, db_manager
 from core.worker import AsyncTask
+from core.style import COLORS, tw, tw_sheet
 from ui.components import (
     TitleLabel,
     DescriptionLabel,
@@ -32,8 +33,9 @@ class NewsTab(QWidget):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+        self.is_loaded = False
         self.setup_ui()
-        self.search_news()
+        # self.search_news()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -78,7 +80,7 @@ class NewsTab(QWidget):
         self.news_limit.valueChanged.connect(self.change_news_limit)
         self.news_limit.setFixedWidth(60)
 
-        self.search_btn = StyledButton("검색", "#4CAF50")
+        self.search_btn = StyledButton("검색", COLORS["green-500"])
         self.search_btn.clicked.connect(self.search_news)
 
         cond_layout.addWidget(self.radio_and)
@@ -118,7 +120,7 @@ class NewsTab(QWidget):
         filter_layout = QHBoxLayout()
         self.news_filter_input = QLineEdit()
         self.news_filter_input.setPlaceholderText("🔍 결과 내 검색 (제목, 언론사 등)")
-        self.news_filter_input.setStyleSheet("padding: 5px; border-radius: 4px;")
+        self.news_filter_input.setStyleSheet(tw("p-5", "rounded"))
         self.news_filter_input.textChanged.connect(self.filter_news_list)
 
         filter_layout.addWidget(self.news_filter_input)
@@ -126,7 +128,7 @@ class NewsTab(QWidget):
 
         # 검색 결과
         self.news_list_view = QListWidget()
-        self.news_list_view.setStyleSheet("QListWidget::item { padding: 5px; }")
+        self.news_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-5"}))
         self.news_list_view.itemDoubleClicked.connect(self.open_news_link)
         right_layout.addWidget(self.news_list_view)
 
@@ -198,22 +200,7 @@ class NewsTab(QWidget):
             final_query = " ".join(selected_groups)
             return news_scraper.get_news_by_query(final_query, limit=limit)
         else:
-            all_news = []
-            seen_links = set()
-
-            for query in selected_groups:
-                try:
-                    results = news_scraper.get_news_by_query(query, limit=limit)
-                    if results:
-                        for news in results:
-                            if news["link"] not in seen_links:
-                                seen_links.add(news["link"])
-                                all_news.append(news)
-                except Exception:
-                    continue
-
-        all_news.sort(key=lambda x: x.get("published_dt"), reverse=True)
-        return all_news[:limit]
+            return news_scraper.get_news_by_or_query(selected_groups, limit=limit)
 
     def _on_news_loaded(self, news_items):
         """뉴스 로드가 완료되면 UI에 뿌려줍니다."""

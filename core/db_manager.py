@@ -55,7 +55,8 @@ def init_db():
                     color TEXT DEFAULT '#2196F3',
                     description TEXT,           
                     is_completed INTEGER DEFAULT 0,
-                    is_roadmap INTEGER DEFAULT 0 -- 중요일정 로드맵
+                    is_roadmap INTEGER DEFAULT 0,
+                    group_id INTEGER
                 )
                 """
             )
@@ -71,12 +72,21 @@ def init_db():
                 """
             )
 
-            # 마이그레이션 코드
+            # 이전 버전과의 호환성을 위한 마이그레이션 코드
             cursor = conn.execute("PRAGMA table_info(schedules)")
             columns = [info[1] for info in cursor.fetchall()]
+            if "description" not in columns:
+                conn.execute("ALTER TABLE schedules ADD COLUMN description TEXT")
+
+            if "is_roadmap" not in columns:
+                conn.execute(
+                    "ALTER TABLE schedules ADD COLUMN is_roadmap INTEGER DEFAULT 0"
+                )
+
             if "group_id" not in columns:
                 conn.execute("ALTER TABLE schedules ADD COLUMN group_id INTEGER")
 
+            # 미지정 강제 등록
             unassigned_count = conn.execute(
                 "SELECT COUNT(*) FROM roadmap_groups WHERE name='미지정'"
             ).fetchone()[0]

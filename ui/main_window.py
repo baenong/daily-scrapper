@@ -1,6 +1,6 @@
 import keyboard
 import qdarktheme
-from PySide6.QtGui import QMouseEvent, QAction
+from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -23,6 +23,7 @@ from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt, Signal, QObject
 # core module
 from core import data_manager
 from core import startup_manager
+from core.style import COLORS, tw, tw_sheet
 
 # Components
 from ui.dashboard_tab import DashboardTab
@@ -45,7 +46,7 @@ class DailyScraper(QMainWindow):
         self.drag_pos = None
         self.is_quitting = False
 
-        self.setWindowTitle("뉴스 법령 스크래퍼")
+        self.setWindowTitle("G-Daily")
         # self.resize(1600, 900)
 
         # 설정 데이터 불러오기
@@ -106,7 +107,7 @@ class DailyScraper(QMainWindow):
 
         # 테마 변경
         self.theme_checkbox = QCheckBox()
-        self.theme_checkbox.setStyleSheet("padding: 5px;")
+        self.theme_checkbox.setStyleSheet(tw("p-5"))
 
         is_dark = self.settings.get("dark_mode", True)
         self.theme_checkbox.setText(" 🌙 " if is_dark else " ☀️ ")
@@ -117,18 +118,16 @@ class DailyScraper(QMainWindow):
         bottom_layout.addWidget(self.theme_checkbox)
 
         # 3. 바탕화면 위젯 모드 버튼
-        self.btn_base_style = """
-        border: none; padding: 5px 10px; border-radius: 5px; margin-left: 10px;
-        """
+        self.btn_base_style = tw("border-none", "py-5", "px-10", "rounded-5", "ml-10")
         self.widget_btn = QPushButton("🖥️ 바탕화면 위젯 모드")
         self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.widget_btn.setStyleSheet(
-            f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
+            tw("bg-blue-300", "text-blue-700") + self.btn_base_style
         )
         self.widget_btn.clicked.connect(self.toggle_widget_mode)
 
         self.top_checkbox = QCheckBox("📌 맨 앞 고정")
-        self.top_checkbox.setStyleSheet("color: #777;")
+        self.top_checkbox.setStyleSheet(tw("text-c77"))
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
         self.top_checkbox.toggled.connect(self.toggle_always_on_top)
 
@@ -160,7 +159,7 @@ class DailyScraper(QMainWindow):
         # Size Grip
         self.size_grip = QSizeGrip(self)
         self.size_grip.setFixedSize(16, 16)
-        self.size_grip.setStyleSheet("background-color: transparent;")
+        self.size_grip.setStyleSheet(tw("bg-transparent"))
         bottom_layout.addWidget(
             self.size_grip,
             0,
@@ -177,7 +176,7 @@ class DailyScraper(QMainWindow):
 
         tray_menu = QMenu()
 
-        open_action = QAction("다시 열기", self)
+        open_action = QAction("활성화", self)
         open_action.triggered.connect(self.bring_to_front)
 
         tray_menu.addAction(open_action)
@@ -234,9 +233,7 @@ class DailyScraper(QMainWindow):
             )
 
             self.widget_btn.setText("🔙 창 모드 복귀")
-            self.widget_btn.setStyleSheet(
-                f"background: #FFEBEE; color: #D32F2F; {self.btn_base_style}"
-            )
+            self.widget_btn.setStyleSheet(tw("bg-red-300", "text-red-700"))
 
             self.opacity_label.show()
             self.opacity_slider.show()
@@ -254,7 +251,7 @@ class DailyScraper(QMainWindow):
 
             self.widget_btn.setText("🖥️ 바탕화면 위젯 모드")
             self.widget_btn.setStyleSheet(
-                f"background: #E3F2FD; color: #1976D2; {self.btn_base_style}"
+                tw("bg-blue-300", "text-blue-700") + self.btn_base_style
             )
 
             self.opacity_label.hide()
@@ -312,10 +309,33 @@ class DailyScraper(QMainWindow):
 
     def on_tab_changed(self, index):
         if index == 0:
-            self.dashboard_tab.load_dashboard_data()
-        elif index == 3:
+            if not getattr(self.news_tab, "is_loaded", False):
+                self.dashboard_tab.load_dashboard_data()
+                self.news_tab.is_loaded = True
+
+        elif index == 1:  # 뉴스 탭
+            if not getattr(self.news_tab, "is_loaded", False):
+                self.news_tab.search_news()
+                self.news_tab.is_loaded = True
+
+        elif index == 2:  # 법령 탭
+            if not getattr(self.law_tab, "is_loaded", False):
+                self.law_tab.refresh_laws()
+                self.law_tab.is_loaded = True
+
+        elif index == 3:  # 정책 브리핑 탭
+            if not getattr(self.policy_tab, "is_loaded", False):
+                self.policy_tab.search_policy()
+                self.policy_tab.is_loaded = True
+
+        elif index == 4:  # 일정 탭
             self.schedule_tab.fetch_data()
             self.schedule_tab.draw_overlays()
+
+        elif index == 5:  # 로드맵 탭
+            if not getattr(self.roadmap_tab, "is_loaded", False):
+                self.roadmap_tab.refresh_data()
+                self.roadmap_tab.is_loaded = True
 
     def update_background_opacity(self, value=None):
         if value is None:
@@ -324,34 +344,28 @@ class DailyScraper(QMainWindow):
         is_widget = getattr(self, "is_widget_mode", False)
 
         if is_widget:
-            alpha = value / 100.0
+            alpha = value
             self.settings["window_opacity"] = value
         else:
-            alpha = 1.0
+            alpha = 100
 
         is_dark = self.settings.get("dark_mode", True)
 
         if is_dark:
-            bg_color = f"rgba(32, 33, 36, {alpha})"
+            bg_color = f"bg-c13-{alpha}"
         else:
-            bg_color = f"rgba(255, 255, 255, {alpha})"
+            bg_color = f"bg-white-{alpha}"
 
-        style = f"""
-            QWidget#AppBackground {{
-                background-color: {bg_color};
-            }}
-            QWidget#FooterContainer {{
-                background-color: transparent;
-            }}
-            QTabWidget::pane {{
-                background-color: transparent;
-                border: none;
-            }}
-            QTabWidget > QWidget {{
-                background-color: transparent;
-            }}
-        """
-        self.setStyleSheet(style)
+        self.setStyleSheet(
+            tw_sheet(
+                {
+                    "QWidget#AppBackground": bg_color,
+                    "QWidget#FooterContainer": "bg-transparent",
+                    "QTabWidget::pane": "bg-transparent border-none",
+                    "QTabWidget > QWidget": "bg-transparent",
+                }
+            )
+        )
 
     def go_to_tab(self, index):
         self.tabs.setCurrentIndex(index)
@@ -371,7 +385,7 @@ class DailyScraper(QMainWindow):
         self.is_quitting = True
         self.close()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent):
         """
         1. 종료 버튼을 클릭하여 종료 시 시스템 트레이로 내려가도록 설정
         2. 위젯 등으로 인한 좀비 프로세스가 남지 않도록 Override
