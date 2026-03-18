@@ -67,7 +67,7 @@ def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
     # 각 부처별 최저 갯수
     for dept_entries in dept_feeds:
         final_selection.extend(dept_entries[:min_guarantee])
-        leftover_pool.extend(dept_entries)
+        leftover_pool.extend(dept_entries[min_guarantee:])
 
     # 최저 갯수 제외한 나머지 브리핑 자료 추가
     leftover_pool.sort(key=lambda x: x["published_dt"], reverse=True)
