@@ -13,6 +13,7 @@ COLORS = {
     "red-400": "#FFC0CC",
     "red-500": "#F44336",
     "red-700": "#D32F2F",
+    "green-300": "#B2FBA5",
     "green-500": "#4CAF50",
     "blue-300": "#E3F2FD",
     "blue-500": "#2196F3",
@@ -140,6 +141,22 @@ def tw(*classes: str):
             val = c[8:]
             if val.isdigit():
                 style.append(f"border-radius: {val}px;")
+            else:
+                v = val[2:]
+                if val.startswith("r-"):
+                    style.append(
+                        f"border-top-right-radius: {v}px; "
+                        f"border-bottom-right-radius: {v}px; "
+                        f"border-top-left-radius: 0px; "
+                        f"border-bottom-left-radius: 0px;"
+                    )
+                elif val.startswith("l-"):
+                    style.append(
+                        f"border-top-left-radius: {v}px; "
+                        f"border-bottom-left-radius: {v}px; "
+                        f"border-top-right-radius: 0px; "
+                        f"border-bottom-right-radius: 0px;"
+                    )
 
         # Padding (p-, px-, py-, pt-, pb-, pl-, pr-)
         elif c.startswith("p-"):

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QGraphicsOpacityEffect,
     QSlider,
-    QPushButton,
     QApplication,
     QSizeGrip,
     QSystemTrayIcon,
@@ -26,12 +25,14 @@ from core.data_manager import SettingsManager
 from core.style import COLORS, tw, tw_sheet
 
 # Components
+from ui.components import StyledButton
 from ui.dashboard_tab import DashboardTab
 from ui.news_tab import NewsTab
 from ui.law_tab import LawTab
 from ui.schedule_tab import ScheduleTab
 from ui.policy_tab import PolicyTab
 from ui.roadmap_tab import RoadmapTab
+from ui.help_dialog import HelpDialog
 
 
 class HotKeySignal(QObject):
@@ -86,10 +87,6 @@ class DailyScraper(QMainWindow):
         layout.addWidget(self.footer_widget)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
-        current_style = self.styleSheet()
-        tooltip_style = tw_sheet({"QToolTip": "text-c13 p-2 text-13"})
-        self.setStyleSheet(current_style + "\n" + tooltip_style)
-
         # 투명도 설정
         self.update_background_opacity()
 
@@ -117,19 +114,15 @@ class DailyScraper(QMainWindow):
         self.theme_checkbox.setChecked(is_dark)
         self.theme_checkbox.toggled.connect(self.toggle_theme)
 
-        bottom_layout.addWidget(self.theme_checkbox)
-
-        # 3. 바탕화면 위젯 모드 버튼
-        self.btn_base_style = tw("border-none", "py-5", "px-10", "rounded-5", "ml-10")
-        self.widget_btn = QPushButton("🖥️ 바탕화면 위젯 모드")
-        self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.widget_btn.setStyleSheet(
-            tw("bg-blue-300", "text-blue-700") + self.btn_base_style
+        # 바탕화면 위젯 모드 버튼
+        self.widget_btn = StyledButton(
+            "🖥️ 위젯 모드", COLORS["blue-300"], COLORS["blue-700"]
         )
+        self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.widget_btn.clicked.connect(self.toggle_widget_mode)
 
         self.top_checkbox = QCheckBox("📌 맨 앞 고정")
-        self.top_checkbox.setStyleSheet(tw("text-c77"))
+        self.top_checkbox.setStyleSheet(tw("text-c77", "mr-5"))
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
         self.top_checkbox.toggled.connect(self.toggle_always_on_top)
 
@@ -142,20 +135,28 @@ class DailyScraper(QMainWindow):
         self.opacity_slider.setCursor(Qt.CursorShape.PointingHandCursor)
         self.opacity_slider.valueChanged.connect(self.update_background_opacity)
 
+        # 기존 자동 실행 및 설정 버튼
+        self.startup_checkbox = QCheckBox("💻 자동실행")
+        self.startup_checkbox.setStyleSheet(tw("text-c77", "mr-5"))
+        self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
+        self.startup_checkbox.toggled.connect(self.toggle_startup)
+
+        # 도움말
+        self.help_btn = StyledButton("도움말", COLORS["green-300"], COLORS["c13"])
+        self.help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.help_btn.clicked.connect(self.show_help_dialog)
+
+        bottom_layout.addWidget(self.theme_checkbox)
         bottom_layout.addWidget(self.widget_btn)
         bottom_layout.addStretch()
         bottom_layout.addWidget(self.top_checkbox)
         bottom_layout.addWidget(self.opacity_label)
         bottom_layout.addWidget(self.opacity_slider)
+        bottom_layout.addWidget(self.startup_checkbox)
+        bottom_layout.addWidget(self.help_btn)
 
         self.opacity_label.hide()
         self.opacity_slider.hide()
-
-        # 기존 자동 실행 및 설정 버튼
-        self.startup_checkbox = QCheckBox("💻 자동 실행")
-        self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
-        self.startup_checkbox.toggled.connect(self.toggle_startup)
-        bottom_layout.addWidget(self.startup_checkbox)
 
         # Size Grip
         self.size_grip = QSizeGrip(self)
@@ -212,6 +213,16 @@ class DailyScraper(QMainWindow):
         else:
             super().mouseMoveEvent(event)
 
+    def show_help_dialog(self):
+        if not hasattr(self, "help_dialog") or not self.help_dialog.isVisible():
+            self.help_dialog = HelpDialog(parent=self)
+            self.help_dialog.show()
+        else:
+            self.help_dialog.raise_()
+            self.help_dialog.activateWindow()
+
+        self.help_dialog.tabs.setCurrentIndex(self.tabs.currentIndex())
+
     def toggle_always_on_top(self, checked):
         flags = self.windowFlags()
         self.settings["always_on_top"] = checked
@@ -234,7 +245,6 @@ class DailyScraper(QMainWindow):
             )
 
             self.widget_btn.setText("🔙 창 모드 복귀")
-            self.widget_btn.setStyleSheet(tw("bg-red-300", "text-red-700"))
 
             self.opacity_label.show()
             self.opacity_slider.show()
@@ -250,10 +260,7 @@ class DailyScraper(QMainWindow):
                 flags |= Qt.WindowType.WindowStaysOnTopHint
             self.setWindowFlags(flags)
 
-            self.widget_btn.setText("🖥️ 바탕화면 위젯 모드")
-            self.widget_btn.setStyleSheet(
-                tw("bg-blue-300", "text-blue-700") + self.btn_base_style
-            )
+            self.widget_btn.setText("🖥️ 위젯 모드")
 
             self.opacity_label.hide()
             self.opacity_slider.hide()

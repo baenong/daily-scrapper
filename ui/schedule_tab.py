@@ -1,6 +1,6 @@
 import os
 import requests
-import webbrowser
+import json
 import xml.etree.ElementTree as ET
 from PySide6.QtWidgets import (
     QWidget,
@@ -14,10 +14,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
 )
 from PySide6.QtCore import Qt, QDate, Signal, QTimer, QThreadPool
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtGui import QColor, QMouseEvent, QFont, QFontMetrics
 from ui.components import (
     TitleLabel,
     StyledButton,
@@ -58,43 +57,150 @@ def get_holidays(year, month):
         return {}
 
 
-def get_instances(schedule, view_start, view_end):
+def get_instances(schedule, view_start, view_end, holidays=None):
     """반복 일정을 전개하여 현재 화면(월)에 표시될 '실제 날짜 구간(인스턴스)'들을 계산합니다."""
     instances = []
     ev_start = QDate.fromString(schedule["start_date"], "yyyy-MM-dd")
     ev_end = QDate.fromString(schedule["end_date"], "yyyy-MM-dd")
     duration = ev_start.daysTo(ev_end)
+
     rtype = schedule.get("repeat_type", "none")
     rep_end_str = schedule.get("repeat_end", "")
     rep_end = QDate.fromString(rep_end_str, "yyyy-MM-dd") if rep_end_str else view_end
 
+    rule_str = schedule.get("repeat_rule", "")
+    rule = {}
+    if rule_str:
+        try:
+            rule = json.loads(rule_str)
+        except json.JSONDecodeError:
+            pass
+
+    interval = rule.get("interval", 1)
+    weekday_only = rule.get("weekday_only", False)
+    holiday_set = holidays if holidays else set()
+
+    def apply_weekday_only(d):
+        if not weekday_only:
+            return d
+
+        while True:
+            dow = d.dayOfWeek()  # 1~7 : 월~일
+            d_str = d.toString("yyyy-MM-dd")
+
+            if dow > 5 or d_str in holiday_set:
+                d = d.addDays(-1)
+            else:
+                break
+
+        return d
+
     if rtype == "none":
         if ev_start <= view_end and ev_end >= view_start:
             instances.append((ev_start, ev_end))
+
     elif rtype == "daily":
-        actual_end = min(rep_end, view_end)
-        if ev_start <= view_end and actual_end >= view_start:
-            instances.append((ev_start, actual_end))
+        curr = ev_start
+        while curr <= rep_end and curr <= view_end:
+            inst_start = apply_weekday_only(curr)
+            inst_end = inst_start.addDays(duration)
+            if inst_end >= view_start and inst_start <= view_end:
+                instances.append((inst_start, inst_end))
+            curr = curr.addDays(interval)
+
     elif rtype == "weekly":
-        curr = ev_start
-        while curr <= rep_end and curr <= view_end:
-            inst_end = curr.addDays(duration)
-            if inst_end >= view_start and curr <= view_end:
-                instances.append((curr, inst_end))
-            curr = curr.addDays(7)
+        days = rule.get("days", [])
+        if not days:
+            days = [ev_start.dayOfWeek() - 1]
+
+        curr_week_start = ev_start.addDays(-(ev_start.dayOfWeek() - 1))
+
+        while curr_week_start <= rep_end and curr_week_start <= view_end:
+            for d in days:
+                inst_start = curr_week_start.addDays(d)
+
+                if inst_start < ev_start or inst_start > rep_end:
+                    continue
+
+                inst_start = apply_weekday_only(inst_start)
+                inst_end = inst_start.addDays(duration)
+
+                if inst_end >= view_start and inst_start <= view_end:
+                    instances.append((inst_start, inst_end))
+
+            curr_week_start = curr_week_start.addDays(7 * interval)
+
     elif rtype == "monthly":
+        mode = rule.get("mode", "date")
         curr = ev_start
+
         while curr <= rep_end and curr <= view_end:
-            inst_end = curr.addDays(duration)
-            if inst_end >= view_start and curr <= view_end:
-                instances.append((curr, inst_end))
-            curr = curr.addMonths(1)
+            inst_start = None
+
+            # [A] 특정 일자 반복 (예: 매월 25일)
+            if mode == "date":
+                target_day = rule.get("date", ev_start.day())
+                # 말일 보정
+                days_in_month = curr.daysInMonth()
+                actual_day = min(target_day, days_in_month)
+                inst_start = QDate(curr.year(), curr.month(), actual_day)
+
+            # [B] N번째 요일 반복 (예: 매월 첫 번째 금요일)
+            elif mode == "nth_day":
+                nth = rule.get("nth", 1)
+                target_dow = rule.get("day", 0) + 1  # UI(0~6) -> QDate(1~7) 매핑
+
+                if nth == -1:  # 마지막 주일 경우
+                    # 해당 월의 마지막 날부터 거꾸로 계산
+                    last_day = QDate(curr.year(), curr.month(), curr.daysInMonth())
+                    offset = (last_day.dayOfWeek() - target_dow) % 7
+                    inst_start = last_day.addDays(-offset)
+                else:
+                    # 첫째 날부터 계산
+                    first_day = QDate(curr.year(), curr.month(), 1)
+                    offset = (target_dow - first_day.dayOfWeek()) % 7
+                    first_occurrence = first_day.addDays(offset)
+                    inst_start = first_occurrence.addDays((nth - 1) * 7)
+
+                    # 계산된 날짜가 달을 넘어가면 제외 (예: 5번째 금요일이 없는 달)
+                    if inst_start.month() != curr.month():
+                        inst_start = None
+
+            if inst_start and inst_start >= ev_start and inst_start <= rep_end:
+                inst_start = apply_weekday_only(inst_start)
+                inst_end = inst_start.addDays(duration)
+                if inst_end >= view_start and inst_start <= view_end:
+                    instances.append((inst_start, inst_end))
+
+            curr = curr.addMonths(interval)
+
+    elif rtype == "yearly":
+        curr = ev_start
+
+        while curr <= rep_end and curr <= view_end:
+            target_month = rule.get("month", ev_start.month())
+            target_day = rule.get("date", ev_start.day())
+
+            # 윤달 방어 (2월 29일을 설정했는데 윤년이 아닌 해인 경우 28일로)
+            temp_date = QDate(curr.year(), target_month, 1)
+            actual_day = min(target_day, temp_date.daysInMonth())
+
+            inst_start = QDate(curr.year(), target_month, actual_day)
+
+            if inst_start >= ev_start and inst_start <= rep_end:
+                inst_start = apply_weekday_only(inst_start)
+                inst_end = inst_start.addDays(duration)
+                if inst_end >= view_start and inst_start <= view_end:
+                    instances.append((inst_start, inst_end))
+
+            curr = curr.addYears(interval)
+
     return instances
 
 
 class DailyEventRowWidget(QWidget, ScheduleActionMixin):
     def __init__(self, schedule_data, parent=None):
-        super().__init__()
+        super().__init__(parent)
         self.schedule_data = schedule_data
         is_law = schedule_data.get("is_law", False)
 
@@ -163,17 +269,17 @@ class DailyEventsDialog(QDialog):
         self.setFixedSize(320, 500)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(TitleLabel(f"{date_obj.toString('yy. MM. dd.')}"))
+        layout.addWidget(TitleLabel(f"{date_obj.toString('yy. MM. dd')}"))
 
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
-            tw("border-b", "border-c99", "rounded", "my-10", "p-3")
+            tw_sheet({"QListWidget": "border-b border-c99 rounded my-10 p-3"})
         )
         layout.addWidget(self.list_widget)
 
         btn_layout = QHBoxLayout()
 
-        self.add_btn = StyledButton("신규 일정", COLORS["blue-500"], padding="10px")
+        self.add_btn = StyledButton("신규 일정", COLORS["blue-500"], padding="5px 10px")
         self.add_btn.clicked.connect(self.add_new_event)
 
         btn_layout.addStretch()
@@ -286,7 +392,7 @@ class ScheduleTab(QWidget):
         self.setup_ui()
         self.build_calendar()
         global_signals.schedule_updated.connect(self.refresh_all_data)
-        global_signals.schedule_updated.connect(self.invalidate_law_cache)
+        global_signals.law_keyword_updated.connect(self.invalidate_law_cache)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -384,14 +490,14 @@ class ScheduleTab(QWidget):
         needs_holiday = cache_key not in self.holidays_cache
         needs_laws = not hasattr(self, "laws_schedules")
 
+        self._render_calendar()
+
         if needs_holiday or needs_laws:
             self.worker = AsyncTask(
                 self._fetch_missing_data, year, month, needs_holiday, needs_laws
             )
             self.worker.signals.result_ready.connect(self._on_missing_data_loaded)
             QThreadPool.globalInstance().start(self.worker)
-        else:
-            self._render_calendar()
 
     def _fetch_missing_data(self, year, month, needs_holiday, needs_laws):
         result = {}
@@ -469,6 +575,8 @@ class ScheduleTab(QWidget):
         self.calendar_table.setRowCount(rows)
 
         current_day = 1
+        actual_today = QDate.currentDate()
+
         for row in range(rows):
             for col in range(7):
                 if row == 0 and col < start_day_of_week:
@@ -478,9 +586,10 @@ class ScheduleTab(QWidget):
 
                 date_obj = QDate(year, month, current_day)
                 date_str = date_obj.toString("yyyy-MM-dd")
-                self.date_to_cell[date_str] = (row, col)
-
                 cell_widget = CustomCalendarCell(date_obj, self)
+                date_day_str = cell_widget.date_label.text()
+
+                self.date_to_cell[date_str] = (row, col)
                 bg_color = "transparent"
                 is_holiday = date_str in monthly_holidays
 
@@ -488,49 +597,45 @@ class ScheduleTab(QWidget):
                     bg_color = "red-400-80"
                     cell_widget.date_label.setStyleSheet(tw("text-red", "font-bold"))
                     cell_widget.date_label.setText(
-                        f"{cell_widget.date_label.text()} {monthly_holidays[date_str]}"
+                        f"{date_day_str} {monthly_holidays[date_str]}"
                     )
                 elif date_obj.dayOfWeek() == 7:
                     bg_color = "red-400-80"
                 elif date_obj.dayOfWeek() == 6:
                     bg_color = "blue-600-80"
 
-                cell_widget.setStyleSheet(
-                    tw_sheet({"CustomCalendarCell": "bg-" + bg_color})
-                )
+                cell_qss = "bg-" + bg_color
+                if date_obj == actual_today:
+                    cell_qss += (
+                        " border-2 border-solid border-green-500 bg-green-300-30"
+                    )
+                    cell_widget.date_label.setText(f"{date_day_str} (오늘)")
+
+                cell_widget.setStyleSheet(tw_sheet({"CustomCalendarCell": cell_qss}))
                 self.calendar_table.setCellWidget(row, col, cell_widget)
                 current_day += 1
 
         QTimer.singleShot(10, self.draw_overlays)
 
-    def draw_overlays(self):
-        # 1. 기존 오버레이 모두 제거
-        for w in self.overlay_widgets:
-            w.setParent(None)
-            w.deleteLater()
-        self.overlay_widgets.clear()
+    def _calculate_instances_bg(self, start_str, end_str, schedules, flat_holidays):
+        view_start = QDate.fromString(start_str, "yyyy-MM-dd")
+        view_end = QDate.fromString(end_str, "yyyy-MM-dd")
 
-        if not self.date_to_cell:
-            return
-
-        if not self.isVisible() or self.calendar_table.viewport().width() <= 0:
-            return
-
-        view_start = QDate.fromString(min(self.date_to_cell.keys()), "yyyy-MM-dd")
-        view_end = QDate.fromString(max(self.date_to_cell.keys()), "yyyy-MM-dd")
-
-        # 2. 이번 달에 표시될 모든 일정 인스턴스 추출
         instances = []
-        for schedule in self.schedules_cache:
-            for inst_start, inst_end in get_instances(schedule, view_start, view_end):
+        for schedule in schedules:
+            for inst_start, inst_end in get_instances(
+                schedule, view_start, view_end, flat_holidays
+            ):
                 instances.append(
                     {"schedule": schedule, "start": inst_start, "end": inst_end}
                 )
+        return instances
 
-        # 3. 슬롯(줄) 겹침 방지
+    def _render_overlay_widgets(self, instances):
         slot_map = {d: [] for d in self.date_to_cell.keys()}
         hidden_counts = {d: 0 for d in self.date_to_cell.keys()}
 
+        view_end = QDate.fromString(max(self.date_to_cell.keys()), "yyyy-MM-dd")
         table_height = self.calendar_table.viewport().height()
         rows = self.calendar_table.rowCount()
 
@@ -598,7 +703,7 @@ class ScheduleTab(QWidget):
 
             is_completed = schedule.get("is_completed", False)
             if is_completed:
-                bg_color = "rgba(168, 168, 168, 0.6)"
+                bg_color = "rgba(168, 168, 168, 0.15)"
             else:
                 c_val = QColor(schedule["color"])
                 bg_color = f"rgb({c_val.red()}, {c_val.green()}, {c_val.blue()})"
@@ -620,7 +725,7 @@ class ScheduleTab(QWidget):
                 # 여백과 높이 설정
                 x = rect_start.x() + 2
                 y = rect_start.y() + 25 + (slot_idx * 24)
-                w = rect_end.right() - rect_start.left() - 4
+                w = rect_end.right() - rect_start.left() - 2
                 h = 22
 
                 is_first_seg = seg == segments[0]
@@ -631,13 +736,23 @@ class ScheduleTab(QWidget):
                 is_roadmap = schedule.get("is_roadmap", False)
                 prefix = "★ " if is_roadmap else ""
 
-                display_text = f"{prefix} {schedule['title']}" if is_first_seg else " "
+                fm = QFontMetrics(QFont())
+                display_text = (
+                    fm.elidedText(
+                        f"{prefix} {schedule['title']}", Qt.TextElideMode.ElideRight, w
+                    )
+                    if is_first_seg
+                    else " "
+                )
                 label = ClickableEventLabel(schedule, display_text)
 
                 style = f"""
                         background-color: {bg_color};
                         {tw("text-14", "p-2", text_decor, "text-" + text_color)}
-                        border-radius: {r_left} {r_right} {r_right} {r_left};
+                        border-top-left-radius: {r_left};
+                        border-top-right-radius: {r_right};
+                        border-bottom-right-radius: {r_right};
+                        border-bottom-left-radius: {r_left};
                         """
                 label.setStyleSheet(style)
                 label.setParent(self.calendar_table.viewport())
@@ -652,6 +767,37 @@ class ScheduleTab(QWidget):
             cell_widget = self.calendar_table.cellWidget(r, c)
             if cell_widget:
                 cell_widget.set_more_count(count)
+
+    def draw_overlays(self):
+        # 1. 기존 오버레이 모두 제거
+        for w in self.overlay_widgets:
+            w.setParent(None)
+            w.deleteLater()
+        self.overlay_widgets.clear()
+
+        if not self.date_to_cell:
+            return
+
+        if not self.isVisible() or self.calendar_table.viewport().width() <= 0:
+            return
+
+        view_start = min(self.date_to_cell.keys())
+        view_end = max(self.date_to_cell.keys())
+
+        # 2. 이번 달에 표시될 모든 일정 인스턴스 추출
+        flat_holidays = set()
+        for month_data in self.holidays_cache.values():
+            flat_holidays.update(month_data.keys())
+
+        self.calc_worker = AsyncTask(
+            self._calculate_instances_bg,
+            view_start,
+            view_end,
+            self.schedules_cache,
+            flat_holidays,
+        )
+        self.calc_worker.signals.result_ready.connect(self._render_overlay_widgets)
+        QThreadPool.globalInstance().start(self.calc_worker)
 
     def refresh_all_data(self):
         self.fetch_data()
@@ -689,5 +835,5 @@ class ScheduleTab(QWidget):
         self.build_calendar()
 
     def show_daily_events(self, date_obj):
-        dialog = DailyEventsDialog(date_obj, parent_tab=self)
+        dialog = DailyEventsDialog(date_obj, parent_tab=self.window())
         dialog.exec()

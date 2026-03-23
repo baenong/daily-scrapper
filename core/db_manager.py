@@ -58,6 +58,7 @@ def init_db():
                     start_date TEXT NOT NULL,  
                     end_date TEXT NOT NULL,    
                     repeat_type TEXT DEFAULT 'none', 
+                    repeat_rule TEXT,
                     repeat_end TEXT,
                     color TEXT DEFAULT '#2196F3',
                     description TEXT,           
@@ -119,6 +120,13 @@ def init_db():
                     conn.execute("ALTER TABLE schedules ADD COLUMN group_id INTEGER")
 
                 conn.execute("PRAGMA user_version = 1")
+
+            # v1.04 Version Migration
+            if current_version < 2:
+                cursor = conn.execute("PRAGMA table_info(schedules)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if "repeat_rule" not in columns:
+                    conn.execute("ALTER TABLE schedules ADD COLUMN repeat_rule TEXT")
 
             # ==========================================================================
             # Input Default Value
@@ -190,6 +198,7 @@ def add_schedule(
     start_date,
     end_date,
     repeat_type,
+    repeat_rule,
     repeat_end,
     color,
     description,
@@ -203,17 +212,18 @@ def add_schedule(
                 """
                 INSERT INTO schedules (
                     title, start_date, end_date, 
-                    repeat_type, repeat_end, 
+                    repeat_type, repeat_rule, repeat_end, 
                     color, description, 
                     is_completed, is_roadmap, group_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     title,
                     start_date,
                     end_date,
                     repeat_type,
+                    repeat_rule,
                     repeat_end,
                     color,
                     description,
@@ -230,6 +240,7 @@ def update_schedule(
     start_date,
     end_date,
     repeat_type,
+    repeat_rule,
     repeat_end,
     color,
     description,
@@ -243,7 +254,7 @@ def update_schedule(
                 """
                 UPDATE schedules SET 
                     title=?, start_date=?, end_date=?, 
-                    repeat_type=?, repeat_end=?, 
+                    repeat_type=?, repeat_rule=?, repeat_end=?, 
                     color=?, description=?, 
                     is_completed=?, is_roadmap=? , group_id=?
                 WHERE id=?
@@ -253,6 +264,7 @@ def update_schedule(
                     start_date,
                     end_date,
                     repeat_type,
+                    repeat_rule,
                     repeat_end,
                     color,
                     description,
@@ -275,7 +287,7 @@ def get_schedules():
         rows = conn.execute(
             """
             SELECT id, title, start_date, end_date, 
-                repeat_type, repeat_end,
+                repeat_type, repeat_rule, repeat_end,
                 color, description,
                 is_completed, is_roadmap, group_id
             FROM schedules
@@ -288,6 +300,7 @@ def get_schedules():
                 "start_date": r["start_date"],
                 "end_date": r["end_date"],
                 "repeat_type": r["repeat_type"],
+                "repeat_rule": r["repeat_rule"],
                 "repeat_end": r["repeat_end"],
                 "color": r["color"],
                 "description": r["description"],

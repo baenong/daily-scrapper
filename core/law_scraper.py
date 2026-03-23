@@ -94,9 +94,7 @@ def get_laws_by_keywords(keywords_list):
             try:
                 infos = future.result()
                 if infos:
-                    all_results.extend(
-                        infos
-                    )  # 2차원 배열을 1차원으로 평탄화(Flatten)하여 합침
+                    all_results.extend(infos)
             except Exception as e:
                 print(f"법령 그룹 병렬 검색 중 오류: {e}")
 

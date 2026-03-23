@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QComboBox,
-    QMessageBox,
 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
@@ -14,10 +13,8 @@ from core.signals import global_signals
 from core.style import COLORS, tw
 from ui.components import (
     TitleLabel,
-    DescriptionLabel,
     StyledButton,
     ClickableEventLabel,
-    EventDialog,
     GroupManagerDialog,
 )
 
@@ -133,9 +130,6 @@ class RoadmapCanvas(QWidget):
         slots = {g["id"]: [] for g in self.groups}
         slots[None] = []
 
-        font = QFont()
-        fm = QFontMetrics(font)
-
         for s in self.schedules:
             g_id = s.get("group_id")
 
@@ -148,40 +142,89 @@ class RoadmapCanvas(QWidget):
             if g_id not in slots:
                 g_id = None
 
-            x_start = self._get_x_pos(s["start_date"])
-            end_date = QDate.fromString(s["end_date"], "yyyy-MM-dd").addDays(1)
-            x_end = self._get_x_pos(end_date.toString("yyyy-MM-dd"))
+            start_date_str = s["start_date"]
+            start_date = QDate.fromString(start_date_str, "yyyy-MM-dd").addDays(-1)
+            is_underflow = start_date.year() < self.target_year
 
-            bar_w = max(x_end - x_start, 15)
+            end_date_str = s["end_date"]
+            end_date = QDate.fromString(end_date_str, "yyyy-MM-dd").addDays(1)
+            is_overflow = end_date.year() > self.target_year
 
-            title_text = f"{s['title']} "
-            text_width = len(title_text) * 10
-            bar_right_x = x_start + bar_w + 3
-            put_inside = bar_w >= text_width + 5
+            # 반복처리
+            rtype = s.get("repeat_type", "none")
+            repeat_label = ""
+            repeat_string = ""
+
+            if rtype != "none":
+                if rtype == "yearly":
+                    repeat_label = "매년"
+                elif rtype == "monthly":
+                    repeat_label = "매월"
+                elif rtype == "weekly":
+                    repeat_label = "매주"
+
+                repeat_end_str = s.get("repeat_end", "")
+                if repeat_end_str:
+                    repeat_end_date = QDate.fromString(repeat_end_str, "yyyy-MM-dd")
+                    repeat_end = f"~{repeat_end_date.toString('yy.MM.dd')}"
+                else:
+                    repeat_end = " 반복"
+
+                repeat_string = f" ({repeat_label} {repeat_end})"
+
+            bar_x_start = self._get_x_pos(start_date_str)
+            bar_x_end = self._get_x_pos(end_date_str)
+
+            # Bar의 너비 (최소 15 보장)
+            bar_width = max(bar_x_end - bar_x_start, 10)
+            bar_height = 22
+
+            title_text = f"{s['title']}{repeat_string}"
+            display_text = title_text  # 공간이 없어서 줄이는 경우 아니면 title 그대로
+
+            font = QFont("Pretendard Variable", 10)
+            fm = QFontMetrics(font)
+            text_width = fm.horizontalAdvance(display_text) + 15
+
+            # Position
+            visual_start = bar_x_start  # 기본적으로는 bar의 x 시작점
+            bar_x_right = bar_x_start + bar_width + 3  # bar 오른쪽 3px
+            text_x_start = bar_x_right  # 기본적으로는 bar 오른쪽 3px 시작
+
+            # 막대 안에 텍스트가 들어갈 수 있는지 판별
+            put_inside = bar_width >= text_width
 
             if put_inside:
-                display_text = title_text
-                visual_end = bar_right_x
+                # bar 너비가 더 넓다면 글자가 bar 안에 있으므로 끝이 bar의 끝이다.
+                visual_end = bar_x_right
             else:
-                space = self.width() - (x_start + bar_w + 3)
-                if space < 0:
-                    space = 0
+                # bar가 더 좁다면 남은 공간을 계산한다.
+                space = self.width() - bar_x_right
 
-                if text_width > space:
-                    display_text = fm.elidedText(
-                        title_text, Qt.TextElideMode.ElideRight, space
-                    )
-                    visual_end = self.width() - 5
+                if space < 0:
+                    # 남은 공간이 아예 없다면 텍스트를 왼쪽에 배치해야 한다.
+                    visual_start = bar_x_start - text_width - 3
+                    text_x_start = visual_start
+                    visual_end = bar_x_right
                 else:
-                    display_text = title_text
-                    visual_end = bar_right_x + text_width + 5
+                    # 남은 공간이 있기는 한데 텍스트가 다 들어가지는 않는 경우
+                    if text_width > space:
+                        # 남은 공간만큼 자르고 ellipsis 처리
+                        display_text = fm.elidedText(
+                            title_text, Qt.TextElideMode.ElideRight, space
+                        )
+                        visual_end = self.width() - 5
+                    else:
+                        # 남은 공간이 title_text 다 들어갈만큼 충분한 경우
+                        visual_end = bar_x_right + text_width
 
             slot_idx = 0
+
             while True:
                 conflict = False
                 if len(slots[g_id]) > slot_idx:
                     for existing_start, existing_end in slots[g_id][slot_idx]:
-                        if x_start < existing_end and visual_end > existing_start:
+                        if visual_start < existing_end and visual_end > existing_start:
                             conflict = True
                             break
                 if not conflict:
@@ -191,42 +234,61 @@ class RoadmapCanvas(QWidget):
             # 슬롯 할당
             while len(slots[g_id]) <= slot_idx:
                 slots[g_id].append([])
-            slots[g_id][slot_idx].append((x_start, visual_end))
+            slots[g_id][slot_idx].append((visual_start, visual_end))
 
             # 라벨 위젯 생성
             y_pos = g_y_map[g_id] + (slot_idx * 26) + 5
 
             is_completed = s.get("is_completed", False)
+            is_repeating = rtype != "none"
+            text_css = "text-c13"
             bg_hex = QColor(s["color"])
-            bg_color = (
-                f"rgba({bg_hex.red()}, {bg_hex.green()}, {bg_hex.blue()}, 0.4)"
-                if is_completed
-                else s["color"]
-            )
+            bg_rgb = f"{bg_hex.red()}, {bg_hex.green()}, {bg_hex.blue()}"
+
+            if is_completed:
+                text_css = ""
+                bg_color = f"rgba({bg_rgb}, 0.2)"
+
+            elif is_repeating:
+                bg_color = f"rgba({bg_rgb}, 0.8)"
+
+            else:
+                bg_color = s["color"]
 
             # Bar
             bar_label = ClickableEventLabel(s, display_text if put_inside else "")
-            bar_label.setToolTip(f"{s['title']}\n({s['start_date']} ~ {s['end_date']})")
+            bar_label.setToolTip(f"{s['title']}\n({start_date_str} ~ {end_date_str})")
+
+            rounded_str = ""
+            if is_overflow and is_underflow:
+                rounded_str = "rounded-0"
+            elif is_overflow:
+                rounded_str = "rounded-l-4"
+            elif is_underflow:
+                rounded_str = "rounded-r-4"
+            else:
+                rounded_str = "rounded"
+
             bar_label.setStyleSheet(
                 f"""
                 background-color: {bg_color};
-                {tw("rounded", "text-13", "p-2")}
+                {tw(rounded_str, text_css, "text-13", "p-2")}
                 """
             )
             bar_label.setParent(self)
-            bar_label.setGeometry(x_start, int(y_pos), bar_w, 22)
+            bar_label.setGeometry(bar_x_start, int(y_pos), bar_width, bar_height)
             bar_label.show()
 
             self.overlay_widgets.append(bar_label)
 
             # Floating Text
             if not put_inside:
-                text_label = ClickableEventLabel(s, f" {s['title']}")
+                text_label = ClickableEventLabel(s, display_text)
                 text_label.setStyleSheet(
                     tw("text-windowtext", "bg-transparent", "text-13")
                 )
                 text_label.setParent(self)
-                text_label.setGeometry(bar_right_x, int(y_pos), text_width + 10, 22)
+                text_label.setGeometry(text_x_start, int(y_pos), text_width, bar_height)
                 text_label.show()
 
                 self.overlay_widgets.append(text_label)
@@ -249,7 +311,6 @@ class RoadmapTab(QWidget):
         # --- [상단: 컨트롤 영역] ---
         top_layout = QHBoxLayout()
         top_layout.addWidget(TitleLabel("🗺️ 연간 업무 로드맵"))
-        top_layout.addWidget(DescriptionLabel("연간 로드맵을 표시합니다."))
 
         self.year_combo = QComboBox()
         current_year = QDate.currentDate().year()
@@ -297,8 +358,29 @@ class RoadmapTab(QWidget):
             s_year = QDate.fromString(s["start_date"], "yyyy-MM-dd").year()
             e_year = QDate.fromString(s["end_date"], "yyyy-MM-dd").year()
 
-            if s_year <= year <= e_year:
-                roadmap_schedules.append(s)
+            rtype = s.get("repeat_type", "none")
+            repeat_end_str = s.get("repeat_end", "")
+
+            if rtype == "none":
+                if s_year <= year <= e_year:
+                    roadmap_schedules.append(s)
+            else:
+                r_year = 9999
+                if repeat_end_str:
+                    r_year = QDate.fromString(repeat_end_str, "yyyy-MM-dd").year()
+
+                if s_year <= year <= r_year:
+                    virtual_s = s.copy()
+
+                    if s_year < year:
+                        virtual_s["start_date"] = f"{year}-01-01"
+
+                    if repeat_end_str:
+                        virtual_s["end_date"] = repeat_end_str
+                    else:
+                        virtual_s["end_date"] = f"{year + 1}-12-31"
+
+                    roadmap_schedules.append(virtual_s)
 
         roadmap_schedules.sort(key=lambda x: (x["start_date"], x["end_date"]))
         self.canvas.update_data(year, groups, roadmap_schedules)
