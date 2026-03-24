@@ -1,3 +1,4 @@
+import json
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -142,45 +143,105 @@ class RoadmapCanvas(QWidget):
             if g_id not in slots:
                 g_id = None
 
-            start_date_str = s["start_date"]
-            start_date = QDate.fromString(start_date_str, "yyyy-MM-dd").addDays(-1)
+            # 기본 툴팁
+            s_start = s["start_date"]
+            s_end = s["end_date"]
+            tooltip_date = f"({s_start} ~ {s_end})"
+
+            render_start_str = s.get("render_start", s_start)
+            start_date = QDate.fromString(render_start_str, "yyyy-MM-dd").addDays(-1)
             is_underflow = start_date.year() < self.target_year
 
-            end_date_str = s["end_date"]
-            end_date = QDate.fromString(end_date_str, "yyyy-MM-dd").addDays(1)
+            render_end_str = s.get("render_end", s_end)
+            end_date = QDate.fromString(render_end_str, "yyyy-MM-dd").addDays(1)
             is_overflow = end_date.year() > self.target_year
 
             # 반복처리
             rtype = s.get("repeat_type", "none")
-            repeat_label = ""
             repeat_string = ""
 
             if rtype != "none":
-                if rtype == "yearly":
-                    repeat_label = "매년"
+                rule_str = s.get("repeat_rule", "")
+                rule = {}
+                if rule_str:
+                    try:
+                        rule = json.loads(rule_str)
+                    except json.JSONDecodeError:
+                        pass
+
+                interval = rule.get("interval", 1)
+                label_base = ""
+
+                if interval == 1:
+                    if rtype == "daily":
+                        label_base = "매일"
+                    elif rtype == "weekly":
+                        label_base = "매주"
+                    elif rtype == "monthly":
+                        label_base = "매월"
+                    elif rtype == "yearly":
+                        label_base = "매년"
+                else:
+                    if rtype == "daily":
+                        label_base = f"{interval}일마다"
+                    elif rtype == "weekly":
+                        label_base = f"{interval}주마다"
+                    elif rtype == "monthly":
+                        label_base = f"{interval}개월마다"
+                    elif rtype == "yearly":
+                        label_base = f"{interval}년마다"
+
+                detail_label = ""
+
+                if rtype == "weekly":
+                    days_map = ["월", "화", "수", "목", "금", "토", "일"]
+                    days = rule.get("days", [])
+                    if days:
+                        detail_label = " " + ",".join([days_map[d] for d in days])
+
                 elif rtype == "monthly":
-                    repeat_label = "매월"
-                elif rtype == "weekly":
-                    repeat_label = "매주"
+                    mode = rule.get("mode", "date")
+                    if mode == "date":
+                        detail_label = f" {rule.get('date', 1)}일"
+                    else:
+                        nth_map = {
+                            1: "첫째",
+                            2: "둘째",
+                            3: "셋째",
+                            4: "넷째",
+                            -1: "마지막",
+                        }
+                        days_map = ["월", "화", "수", "목", "금", "토", "일"]
+                        nth = rule.get("nth", 1)
+                        day_idx = rule.get("day", 0)
+                        detail_label = f" {nth_map.get(nth, '')} {days_map[day_idx]}"
+
+                elif rtype == "yearly":
+                    detail_label = f" {rule.get('month', 1)}.{rule.get('date', 1)}"
+
+                if rule.get("weekday_only"):
+                    detail_label += "(평일)"
 
                 repeat_end_str = s.get("repeat_end", "")
                 if repeat_end_str:
+                    tooltip_date = f"({s_start} ~ {render_end_str})"
                     repeat_end_date = QDate.fromString(repeat_end_str, "yyyy-MM-dd")
-                    repeat_end = f"~{repeat_end_date.toString('yy.MM.dd')}"
+                    repeat_end = f" ~{repeat_end_date.toString('yy.MM.dd')}"
                 else:
+                    tooltip_date = f"({s_start} ~ )"
                     repeat_end = " 반복"
 
-                repeat_string = f" ({repeat_label} {repeat_end})"
+                repeat_string = f" ({label_base}{detail_label}{repeat_end})"
 
-            bar_x_start = self._get_x_pos(start_date_str)
-            bar_x_end = self._get_x_pos(end_date_str)
+            bar_x_start = self._get_x_pos(render_start_str)
+            bar_x_end = self._get_x_pos(render_end_str)
 
             # Bar의 너비 (최소 15 보장)
             bar_width = max(bar_x_end - bar_x_start, 10)
             bar_height = 22
 
             title_text = f"{s['title']}{repeat_string}"
-            display_text = title_text  # 공간이 없어서 줄이는 경우 아니면 title 그대로
+            display_text = title_text
 
             font = QFont("Pretendard Variable", 10)
             fm = QFontMetrics(font)
@@ -240,24 +301,20 @@ class RoadmapCanvas(QWidget):
             y_pos = g_y_map[g_id] + (slot_idx * 26) + 5
 
             is_completed = s.get("is_completed", False)
-            is_repeating = rtype != "none"
             text_css = "text-c13"
             bg_hex = QColor(s["color"])
             bg_rgb = f"{bg_hex.red()}, {bg_hex.green()}, {bg_hex.blue()}"
 
             if is_completed:
                 text_css = ""
-                bg_color = f"rgba({bg_rgb}, 0.2)"
-
-            elif is_repeating:
-                bg_color = f"rgba({bg_rgb}, 0.8)"
+                bg_color = f"rgba({bg_rgb}, 0.3)"
 
             else:
                 bg_color = s["color"]
 
             # Bar
             bar_label = ClickableEventLabel(s, display_text if put_inside else "")
-            bar_label.setToolTip(f"{s['title']}\n({start_date_str} ~ {end_date_str})")
+            bar_label.setToolTip(f"{s['title']}\n{tooltip_date}")
 
             rounded_str = ""
             if is_overflow and is_underflow:
@@ -313,12 +370,8 @@ class RoadmapTab(QWidget):
         top_layout.addWidget(TitleLabel("🗺️ 연간 업무 로드맵"))
 
         self.year_combo = QComboBox()
-        current_year = QDate.currentDate().year()
-        self.year_combo.addItems(
-            [f"{y}년" for y in range(current_year - 2, current_year + 2)]
-        )
-        self.year_combo.setCurrentText(f"{current_year}년")
         self.year_combo.setMinimumWidth(90)
+        self.update_year_combo()
         self.year_combo.currentTextChanged.connect(self.refresh_data)
 
         self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", COLORS["blue-500"])
@@ -340,13 +393,70 @@ class RoadmapTab(QWidget):
         self.scroll_area.setWidget(self.canvas)
         layout.addWidget(self.scroll_area)
 
+    def update_year_combo(self):
+        current_year = QDate.currentDate().year()
+
+        active_years = set()
+
+        # Default Years
+        active_years.add(current_year - 1)
+        active_years.add(current_year)
+        active_years.add(current_year + 1)
+
+        schedules = db_manager.get_schedules()
+        for s in schedules:
+            if not s.get("is_roadmap", False):
+                continue
+
+            # 시작종료일 추출
+            s_year = QDate.fromString(s["start_date"], "yyyy-MM-dd").year()
+            e_year = QDate.fromString(s["end_date"], "yyyy-MM-dd").year()
+
+            # 반복 종료일이 있다면 해당 일자도 추출
+            rep_end = s.get("repeat_end", "")
+            if rep_end:
+                r_year = QDate.fromString(rep_end, "yyyy-MM-dd").year()
+                e_year = max(e_year, r_year)
+
+            if s_year > 0 and e_year >= s_year:
+                for y in range(s_year, e_year + 1):
+                    active_years.add(y)
+
+        sorted_years = sorted(list(active_years))
+        new_years = [f"{y}년" for y in sorted_years]
+        current_items = [
+            self.year_combo.itemText(i) for i in range(self.year_combo.count())
+        ]
+
+        if current_items != new_years:
+            self.year_combo.blockSignals(True)
+
+            selected_text = self.year_combo.currentText()
+            if not selected_text:
+                selected_text = f"{current_year}년"
+
+            self.year_combo.clear()
+            self.year_combo.addItems(new_years)
+
+            if selected_text in new_years:
+                self.year_combo.setCurrentText(selected_text)
+            else:
+                self.year_combo.setCurrentText(f"{current_year}년")
+
+            self.year_combo.blockSignals(False)
+
     def open_group_manager(self):
         dialog = GroupManagerDialog(self)
         dialog.exec()
 
     def refresh_data(self):
-        year = int(self.year_combo.currentText().replace("년", ""))
+        self.update_year_combo()
 
+        year_text = self.year_combo.currentText()
+        if not year_text:
+            return
+
+        year = int(year_text.replace("년", ""))
         groups = db_manager.get_roadmap_groups()
         all_schedules = db_manager.get_schedules()
 
@@ -365,20 +475,20 @@ class RoadmapTab(QWidget):
                 if s_year <= year <= e_year:
                     roadmap_schedules.append(s)
             else:
-                r_year = 9999
+                # 반복을 위한 가짜 날짜(종료일을 지정하지 않을 경우를 대비)
+                r_year = 3000
                 if repeat_end_str:
                     r_year = QDate.fromString(repeat_end_str, "yyyy-MM-dd").year()
 
                 if s_year <= year <= r_year:
                     virtual_s = s.copy()
+                    render_start = f"{year}-01-01" if s_year < year else s["start_date"]
+                    render_end = (
+                        repeat_end_str if repeat_end_str else f"{year + 1}-12-31"
+                    )
 
-                    if s_year < year:
-                        virtual_s["start_date"] = f"{year}-01-01"
-
-                    if repeat_end_str:
-                        virtual_s["end_date"] = repeat_end_str
-                    else:
-                        virtual_s["end_date"] = f"{year + 1}-12-31"
+                    virtual_s["render_start"] = render_start
+                    virtual_s["render_end"] = render_end
 
                     roadmap_schedules.append(virtual_s)
 

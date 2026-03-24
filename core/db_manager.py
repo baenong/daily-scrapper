@@ -93,6 +93,16 @@ def init_db():
                 """
             )
 
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS custom_colors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    hex_code TEXT NOT NULL
+                )
+                """
+            )
+
             # v1.03 Version Migration
             if current_version < 1:
 
@@ -245,7 +255,7 @@ def update_schedule(
     color,
     description,
     is_completed,
-    is_roadmap,
+    is_roadmap=False,
     group_id=None,
 ):
     with closing(get_connection()) as conn:
@@ -421,3 +431,24 @@ def delete_roadmap_group(group_id):
                 )
 
             conn.execute("DELETE FROM roadmap_groups WHERE id=?", (group_id,))
+
+
+def add_custom_color(name, hex_code):
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute(
+                "INSERT INTO custom_colors (name, hex_code) VALUES (?, ?)",
+                (name, hex_code),
+            )
+
+
+def get_custom_colors():
+    with closing(get_connection()) as conn:
+        rows = conn.execute("SELECT name, hex_code FROM custom_colors").fetchall()
+        return {r["name"]: r["hex_code"] for r in rows}
+
+
+def delete_custom_color(name):
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute("DELETE FROM custom_colors WHERE name=?", (name,))

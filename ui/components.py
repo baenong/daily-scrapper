@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QToolTip,
     QMessageBox,
     QFrame,
+    QInputDialog,
 )
 from PySide6.QtGui import (
     QColor,
@@ -229,13 +230,16 @@ class ScheduleActionMixin:
             s["start_date"],
             s["end_date"],
             s["repeat_type"],
+            s.get("repeat_rule", ""),
             s["repeat_end"],
             s["color"],
             s.get("description", ""),
             new_status,
             s.get("is_roadmap", False),
-            s.get("group_id"),
+            s.get("group_id", None),
         )
+
+        self.schedule_data["is_completed"] = new_status
         global_signals.schedule_updated.emit()
 
     def edit_event(self):
@@ -381,7 +385,7 @@ class GroupManagerDialog(QDialog):
         input_layout.addWidget(self.add_btn)
         layout.addLayout(input_layout)
 
-        self.del_btn = StyledButton("선택 그룹 삭제", COLORS["red-500 "])
+        self.del_btn = StyledButton("선택 그룹 삭제", COLORS["red-500"])
         self.del_btn.clicked.connect(self.delete_group)
         layout.addWidget(self.del_btn)
 
@@ -458,7 +462,7 @@ class EventDialog(QDialog):
         repeat_layout = QHBoxLayout()
         repeat_layout.addWidget(TitleLabel("🔁 반복", 14))
         self.repeat_combo = QComboBox()
-        self.repeat_combo.addItems(["반복 없음", "매일", "매주", "매월", "매년"])
+        self.repeat_combo.addItems(["반복 없음", "일", "주", "월", "연"])
         self.repeat_combo.setStyleSheet(tw("py-2 px-4"))
         self.repeat_combo.setFixedWidth(100)
         repeat_layout.addWidget(self.repeat_combo)
@@ -554,7 +558,9 @@ class EventDialog(QDialog):
         self.month_day_combo.setFixedWidth(60)
         nth_opt_layout.addWidget(self.month_nth_radio)
         nth_opt_layout.addWidget(self.month_nth_combo)
+        nth_opt_layout.addWidget(QLabel("주 "))
         nth_opt_layout.addWidget(self.month_day_combo)
+        nth_opt_layout.addWidget(QLabel("요일"))
         nth_opt_layout.addStretch()
 
         monthly_layout.addLayout(date_opt_layout)
@@ -597,13 +603,32 @@ class EventDialog(QDialog):
         self.color_preview.setToolTip("클릭하여 다른 색상을 선택하세요")
         self.color_preview.clicked.connect(self.open_color_picker)
         color_layout.addWidget(self.color_preview)
-        color_layout.addWidget(QLabel("← 커스텀 색상 선택"))
+
+        self.add_color_label = QLabel("← 다른색상 선택")
+        color_layout.addWidget(self.add_color_label)
+
+        self.save_color_btn = StyledButton("선택한 색상 추가", "transparent")
+        self.save_color_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_color_btn.setToolTip("현재 색상을 즐겨찾기에 추가합니다")
+        self.save_color_btn.clicked.connect(self.save_custom_color)
+        color_layout.addWidget(self.save_color_btn)
+
+        self.delete_color_btn = StyledButton(
+            "선택한 색상 삭제", "transparent", COLORS["red-500"]
+        )
+        self.delete_color_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.delete_color_btn.setToolTip("현재 색상을 삭제합니다. (기본색상 제외)")
+        self.delete_color_btn.clicked.connect(self.delete_custom_color)
+        color_layout.addWidget(self.delete_color_btn)
+
         color_layout.addStretch()
 
         self.color_combo = QComboBox()
         self.color_combo.setStyleSheet(tw("py-2"))
         self.color_combo.setMinimumWidth(125)
-        self.colors = DEFAULT_COLORS
+        self.colors = DEFAULT_COLORS.copy()
+        custom_colors = db_manager.get_custom_colors()
+        self.colors.update(custom_colors)
 
         for name, hex_color in self.colors.items():
             pixmap = QPixmap(16, 16)
@@ -682,24 +707,37 @@ class EventDialog(QDialog):
             # 반복 선택됨 -> 패널 보이기 및 해당 페이지 전환
             self.description_text.setFixedHeight(80)
             self.repeat_detail_widget.setVisible(True)
-            current_date = QDate.currentDate()
+            start_date = self.start_date.date()
 
             if idx == 1:  # 일
                 self.interval_unit_label.setText("일 마다")
                 self.repeat_stack.setCurrentIndex(0)
-                self.repeat_end.setDate(current_date.addDays(1))
+                self.repeat_end.setDate(start_date.addDays(1))
+
             elif idx == 2:  # 주
                 self.interval_unit_label.setText("주 마다")
                 self.repeat_stack.setCurrentIndex(1)
-                self.repeat_end.setDate(current_date.addDays(7))
+                self.repeat_end.setDate(start_date.addDays(7))
+
+                target_dow = start_date.dayOfWeek() - 1
+                for i, cb in enumerate(self.week_cbs):
+                    cb.setChecked(i == target_dow)
+
             elif idx == 3:  # 월
                 self.interval_unit_label.setText("개월 마다")
                 self.repeat_stack.setCurrentIndex(2)
-                self.repeat_end.setDate(current_date.addMonths(1))
+                self.repeat_end.setDate(start_date.addMonths(1))
+
+                self.month_date_radio.setChecked(True)
+                self.month_date_spin.setValue(start_date.day())
+
             elif idx == 4:  # 년
                 self.interval_unit_label.setText("년 마다")
                 self.repeat_stack.setCurrentIndex(3)
-                self.repeat_end.setDate(current_date.addYears(1))
+                self.repeat_end.setDate(start_date.addYears(1))
+
+                self.year_month_spin.setValue(start_date.month())
+                self.year_day_spin.setValue(start_date.day())
 
     def open_color_picker(self):
         current_hex = self.colors.get(self.color_combo.currentText(), COLORS["red-300"])
@@ -713,6 +751,73 @@ class EventDialog(QDialog):
             self.colors[" 사용자 지정"] = hex_color
             self.color_combo.setCurrentText(" 사용자 지정")
             self.update_color_preview()
+
+    def save_custom_color(self):
+        current_name = self.color_combo.currentText()
+        current_hex = self.colors.get(current_name)
+
+        if not current_hex:
+            return
+
+        text, ok = QInputDialog.getText(
+            self,
+            "색상 즐겨찾기",
+            "새로운 색상의 이름을 입력하세요:\n(예: 중요 업무, 정기 회의 등)",
+        )
+
+        if ok and text:
+            text = text.strip()
+            if not text:
+                QMessageBox.warning(self, "경고", "이름을 입력해야 합니다.")
+                return
+            if text in self.colors:
+                QMessageBox.warning(
+                    self, "경고", "이미 존재하는 이름입니다. 다른 이름을 사용해주세요."
+                )
+                return
+
+            # 1. DB에 저장
+            db_manager.add_custom_color(text, current_hex)
+
+            # 2. 현재 딕셔너리에 추가
+            self.colors[text] = current_hex
+
+            # 3. 콤보박스에 아이템 추가
+            pixmap = QPixmap(16, 16)
+            pixmap.fill(QColor(current_hex))
+            self.color_combo.addItem(QIcon(pixmap), text)
+
+            # 4. 방금 추가한 색상으로 콤보박스 선택 변경
+            self.color_combo.setCurrentText(text)
+
+            QMessageBox.information(
+                self, "저장 완료", f"'{text}' 색상이 즐겨찾기에 추가되었습니다!"
+            )
+
+    def delete_custom_color(self):
+        current_name = self.color_combo.currentText()
+
+        if current_name in DEFAULT_COLORS or current_name == " 사용자 지정":
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "색상 삭제",
+            f"'{current_name}' 색상을 정말 삭제하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            db_manager.delete_custom_color(current_name)
+
+            if current_name in self.colors:
+                del self.colors[current_name]
+
+            current_index = self.color_combo.currentIndex()
+            self.color_combo.removeItem(current_index)
+
+            QMessageBox.information(self, "삭제 완료", "색상이 삭제되었습니다.")
 
     def refresh_groups(self, default_select_id=None):
         self.roadmap_group_combo.clear()
@@ -741,13 +846,22 @@ class EventDialog(QDialog):
         self.refresh_groups(default_select_id=current_id)
 
     def update_color_preview(self):
-        selected_color = self.colors[self.color_combo.currentText()]
+        current_name = self.color_combo.currentText()
+        selected_color = self.colors[current_name]
         self.color_preview.setStyleSheet(
             f"""
             background-color: {selected_color};
             {tw('border-b', 'border-cCC', 'rounded-10')}
             """
         )
+
+        is_default = current_name in DEFAULT_COLORS
+        is_temp_custom = current_name == " 사용자 지정"
+        is_saved_custom = not is_default and not is_temp_custom
+
+        self.add_color_label.setVisible(is_default)
+        self.save_color_btn.setVisible(is_temp_custom)
+        self.delete_color_btn.setVisible(is_saved_custom)
 
     def load_existing_data(self):
         self.title_input.setText(self.schedule_data["title"])
