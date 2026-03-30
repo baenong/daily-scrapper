@@ -53,7 +53,7 @@ def get_holidays(year, month):
             ).text
             for item in root.findall(".//item")
         }
-    except:
+    except Exception:
         return {}
 
 
@@ -407,17 +407,8 @@ class ScheduleTab(QWidget):
         self.year_combo = QComboBox()
         self.month_combo = QComboBox()
 
-        self.year_combo.addItems([f"{y}년" for y in range(2000, 2051)])
+        self.year_combo.addItems([f"{y}년" for y in range(2024, 2035)])
         self.month_combo.addItems([f"{m}월" for m in range(1, 13)])
-
-        combo_style = tw_sheet(
-            {
-                "QComboBox": "text-14 rounded-5 bg-transparent, py-2 px-10 border-b border-cDD",
-                "QComboBox::drop-down": "border-none",
-            }
-        )
-        self.year_combo.setStyleSheet(combo_style)
-        self.month_combo.setStyleSheet(combo_style)
 
         self.year_combo.currentIndexChanged.connect(self.on_date_combo_changed)
         self.month_combo.currentIndexChanged.connect(self.on_date_combo_changed)
@@ -493,11 +484,11 @@ class ScheduleTab(QWidget):
         self._render_calendar()
 
         if needs_holiday or needs_laws:
-            self.worker = AsyncTask(
+            worker = AsyncTask(
                 self._fetch_missing_data, year, month, needs_holiday, needs_laws
             )
-            self.worker.signals.result_ready.connect(self._on_missing_data_loaded)
-            QThreadPool.globalInstance().start(self.worker)
+            worker.signals.result_ready.connect(self._on_missing_data_loaded)
+            QThreadPool.globalInstance().start(worker)
 
     def _fetch_missing_data(self, year, month, needs_holiday, needs_laws):
         result = {}
@@ -789,15 +780,15 @@ class ScheduleTab(QWidget):
         for month_data in self.holidays_cache.values():
             flat_holidays.update(month_data.keys())
 
-        self.calc_worker = AsyncTask(
+        calc_worker = AsyncTask(
             self._calculate_instances_bg,
             view_start,
             view_end,
             self.schedules_cache,
             flat_holidays,
         )
-        self.calc_worker.signals.result_ready.connect(self._render_overlay_widgets)
-        QThreadPool.globalInstance().start(self.calc_worker)
+        calc_worker.signals.result_ready.connect(self._render_overlay_widgets)
+        QThreadPool.globalInstance().start(calc_worker)
 
     def refresh_all_data(self):
         self.fetch_data()

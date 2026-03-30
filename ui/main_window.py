@@ -1,6 +1,7 @@
+import sys
+import ctypes
 import keyboard
-import qdarktheme
-from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction
+from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction, QPainter
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -10,19 +11,20 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QCheckBox,
-    QGraphicsOpacityEffect,
     QSlider,
-    QApplication,
     QSizeGrip,
-    QSystemTrayIcon,
+    QApplication,
     QMenu,
+    QSystemTrayIcon,
+    QGraphicsOpacityEffect,
 )
 from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt, Signal, QObject
 
 # core module
 from core import startup_manager
 from core.data_manager import SettingsManager
-from core.style import COLORS, tw, tw_sheet
+from core.tw_utils import COLORS, tw, tw_sheet
+from core.style import setup_theme
 
 # Components
 from ui.components import StyledButton
@@ -35,11 +37,12 @@ from ui.roadmap_tab import RoadmapTab
 from ui.help_dialog import HelpDialog
 
 
-class HotKeySignal(QObject):
-    activated = Signal()
+# class HotKeySignal(QObject):
+# activated = Signal()
 
 
 class DailyScraper(QMainWindow):
+
     def __init__(self):
         super().__init__()
 
@@ -55,6 +58,7 @@ class DailyScraper(QMainWindow):
         if self.settings.get("window_geometry"):
             self.restoreGeometry(self.settings["window_geometry"])
 
+        self.is_dark = self.settings.get("dark_mode", True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self.main_widget = QWidget()
@@ -88,12 +92,19 @@ class DailyScraper(QMainWindow):
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
         # 투명도 설정
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.update_background_opacity()
 
+        # Qt Rendering Bug Fix
+        self.toggle_widget_mode(is_init=True)
+        self.toggle_widget_mode(is_init=True)
+        self.toggle_theme(animate=False)
+        self.toggle_theme(animate=False)
+
         # 글로벌 단축키
-        self.hotkey_signal = HotKeySignal()
-        self.hotkey_signal.activated.connect(self.bring_to_front)
-        keyboard.add_hotkey("ctrl+shift+space", self.hotkey_signal.activated.emit)
+        # self.hotkey_signal = HotKeySignal()
+        # self.hotkey_signal.activated.connect(self.bring_to_front)
+        # keyboard.add_hotkey("ctrl+shift+space", self.hotkey_signal.activated.emit)
 
         # 시스템 트레이
         self.setup_tray_icon()
@@ -106,12 +117,10 @@ class DailyScraper(QMainWindow):
 
         # 테마 변경
         self.theme_checkbox = QCheckBox()
-        self.theme_checkbox.setStyleSheet(tw("p-5"))
 
-        is_dark = self.settings.get("dark_mode", True)
-        self.theme_checkbox.setText(" 🌙 " if is_dark else " ☀️ ")
-        qdarktheme.setup_theme("dark" if is_dark else "light")
-        self.theme_checkbox.setChecked(is_dark)
+        self.theme_checkbox.setText(" 🌙 " if self.is_dark else " ☀️ ")
+        self.apply_native_theme(self.is_dark)
+        self.theme_checkbox.setChecked(self.is_dark)
         self.theme_checkbox.toggled.connect(self.toggle_theme)
 
         # 바탕화면 위젯 모드 버튼
@@ -193,25 +202,32 @@ class DailyScraper(QMainWindow):
         self.tray_icon.activated.connect(self.on_tray_activated)
         self.tray_icon.show()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self.is_widget_mode and event.button() == Qt.MouseButton.LeftButton:
-            self.drag_pos = (
-                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            )
-            event.accept()
-        else:
-            super().mousePressEvent(event)
+    def apply_native_theme(self, is_dark: bool):
+        app: QApplication = QApplication.instance()
+        setup_theme(app, is_dark)
 
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if (
-            self.is_widget_mode
-            and event.buttons() == Qt.MouseButton.LeftButton
-            and self.drag_pos is not None
-        ):
-            self.move(event.globalPosition().toPoint() - self.drag_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
+    def enforce_dark_titlebar(self, is_dark: bool):
+        # 윈도우 운영체제일 때만 작동하도록 방어 코드 작성
+        if sys.platform != "win32":
+            return
+
+        try:
+            # Windows 10/11의 DWM API 속성 번호
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+
+            # 현재 창의 고유 ID(HWND) 가져오기
+            hwnd = int(self.winId())
+            value = ctypes.c_int(1 if is_dark else 0)
+
+            set_window_attribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(value),
+                ctypes.sizeof(value),
+            )
+        except Exception as e:
+            print(f"제목 표시줄 다크모드 적용 실패: {e}")
 
     def show_help_dialog(self):
         if not hasattr(self, "help_dialog") or not self.help_dialog.isVisible():
@@ -224,55 +240,59 @@ class DailyScraper(QMainWindow):
         self.help_dialog.tabs.setCurrentIndex(self.tabs.currentIndex())
 
     def toggle_always_on_top(self, checked):
-        flags = self.windowFlags()
         self.settings["always_on_top"] = checked
-
-        if checked:
-            self.setWindowFlags(flags | Qt.WindowType.WindowStaysOnTopHint)
-        else:
-            self.setWindowFlags(flags & ~Qt.WindowType.WindowStaysOnTopHint)
+        flags = self.windowFlags()
+        flags = (
+            flags | Qt.WindowType.WindowStaysOnTopHint
+            if checked
+            else flags & ~Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setWindowFlags(flags)
         self.show()
 
-    def toggle_widget_mode(self):
-        if not self.is_widget_mode:
-            self.is_widget_mode = True
-            self.saved_geometry = self.saveGeometry()
+    def toggle_widget_mode(self, is_init=False):
+        self.is_widget_mode = not self.is_widget_mode
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_TranslucentBackground, self.is_widget_mode
+        )
 
-            self.setWindowFlags(
+        if self.is_widget_mode:
+            flags = (
                 Qt.WindowType.FramelessWindowHint
                 | Qt.WindowType.WindowStaysOnBottomHint
                 | Qt.WindowType.Tool
             )
 
+            self.saved_geometry = self.saveGeometry()
+            self.setWindowFlags(flags)
             self.widget_btn.setText("🔙 창 모드 복귀")
-
             self.opacity_label.show()
             self.opacity_slider.show()
             self.size_grip.show()
             self.update_background_opacity()
 
-            self.show()
+            if not is_init:
+                self.show()
         else:
-            self.is_widget_mode = False
-
             flags = Qt.WindowType.Window
             if self.top_checkbox.isChecked():
                 flags |= Qt.WindowType.WindowStaysOnTopHint
+
             self.setWindowFlags(flags)
-
             self.widget_btn.setText("🖥️ 위젯 모드")
-
             self.opacity_label.hide()
             self.opacity_slider.hide()
             self.size_grip.hide()
-            self.update_background_opacity()
 
-            self.showNormal()
-            self.show()
-            QApplication.processEvents()
+            self.enforce_dark_titlebar(self.is_dark)
 
-            if hasattr(self, "saved_geometry"):
-                self.restoreGeometry(self.saved_geometry)
+            if not is_init:
+                self.showNormal()
+                self.show()
+                QApplication.processEvents()
+
+                if hasattr(self, "saved_geometry"):
+                    self.restoreGeometry(self.saved_geometry)
 
     def toggle_startup(self, checked):
         success = startup_manager.set_startup(checked)
@@ -283,7 +303,7 @@ class DailyScraper(QMainWindow):
                 "시작 프로그램 설정에 실패했습니다.\n백신 프로그램이 차단했는지 확인해 주세요.",
             )
 
-    def toggle_theme(self, checked, animate=True):
+    def toggle_theme(self, animate=True):
         if animate:
             overlay = QLabel(self)
             overlay.setPixmap(self.grab())
@@ -291,11 +311,10 @@ class DailyScraper(QMainWindow):
             overlay.move(0, 0)
             overlay.show()
 
-        theme = "dark" if checked else "light"
-        qdarktheme.setup_theme(theme)
-
-        self.theme_checkbox.setText(" 🌙 " if checked else " ☀️ ")
-        self.settings["dark_mode"] = checked
+        self.is_dark = not self.is_dark
+        self.apply_native_theme(self.is_dark)
+        self.theme_checkbox.setText(" 🌙 " if self.is_dark else " ☀️ ")
+        self.settings["dark_mode"] = self.is_dark
 
         self.update_background_opacity()
 
@@ -317,7 +336,7 @@ class DailyScraper(QMainWindow):
 
     def on_tab_changed(self, index):
         if index == 0:
-            if not getattr(self.news_tab, "is_loaded", False):
+            if not getattr(self.dashboard_tab, "is_loaded", False):
                 self.dashboard_tab.load_dashboard_data()
                 self.news_tab.is_loaded = True
 
@@ -350,13 +369,10 @@ class DailyScraper(QMainWindow):
             value = self.opacity_slider.value()
 
         if self.is_widget_mode:
-            alpha = value
             self.settings["window_opacity"] = value
-        else:
-            alpha = 100
 
-        is_dark = self.settings.get("dark_mode", True)
-        bg_color = f"bg-c13-{alpha}" if is_dark else f"bg-white-{alpha}"
+        alpha = value if self.is_widget_mode else 100
+        bg_color = f"bg-c13-{alpha}" if self.is_dark else f"bg-white-{alpha}"
 
         self.setStyleSheet(
             tw_sheet(
@@ -368,6 +384,8 @@ class DailyScraper(QMainWindow):
                 }
             )
         )
+
+        self.update()
 
     def go_to_tab(self, index):
         self.tabs.setCurrentIndex(index)
@@ -386,6 +404,37 @@ class DailyScraper(QMainWindow):
     def quit_app(self):
         self.is_quitting = True
         self.close()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self.is_widget_mode and event.button() == Qt.MouseButton.LeftButton:
+            self.drag_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if (
+            self.is_widget_mode
+            and event.buttons() == Qt.MouseButton.LeftButton
+            and self.drag_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self.drag_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def paintEvent(self, event):
+        if getattr(self, "is_widget_mode", False):
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+
+            painter.end()
+
+        super().paintEvent(event)
 
     def closeEvent(self, event: QCloseEvent):
         """

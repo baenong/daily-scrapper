@@ -1,14 +1,8 @@
 import concurrent.futures
 import feedparser
 import urllib.parse
-import requests
 from email.utils import parsedate_to_datetime
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-session = requests.Session()
-session.verify = False
+from core.network import global_session as session
 
 
 def get_news_by_query(query_string, limit=15):
@@ -49,6 +43,9 @@ def get_news_by_query(query_string, limit=15):
                 source_title = "알 수 없는 출처"
 
         except Exception:
+            print(
+                f"개별 뉴스 항목 파싱 중 오류 (제목: {getattr(entry, 'title', '알수없음')}): {e}"
+            )
             continue
 
         news_list.append(

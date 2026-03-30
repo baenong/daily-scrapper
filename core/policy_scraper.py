@@ -1,14 +1,8 @@
-import urllib3
 import feedparser
-import requests
 import html
 import concurrent.futures
 from email.utils import parsedate_to_datetime
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-session = requests.Session()
-session.verify = False
+from core.network import global_session as session
 
 
 def _fetch_single_policy_rss(url):
@@ -45,7 +39,7 @@ def _fetch_single_policy_rss(url):
         return []
 
 
-def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
+def get_policy_briefings(rss_urls, limit=15):
     if not rss_urls:
         return []
 
@@ -61,19 +55,22 @@ def get_policy_briefings(rss_urls, limit=15, min_guarantee=5):
             if result:
                 dept_feeds.append(result)
 
+    if not dept_feeds:
+        return []
+
+    guarantee = max(1, limit // len(dept_feeds))
     final_selection = []
     leftover_pool = []
 
     # 각 부처별 최저 갯수
     for dept_entries in dept_feeds:
-        final_selection.extend(dept_entries[:min_guarantee])
-        leftover_pool.extend(dept_entries[min_guarantee:])
+        final_selection.extend(dept_entries[:guarantee])
+        leftover_pool.extend(dept_entries[guarantee:])
 
     # 최저 갯수 제외한 나머지 브리핑 자료 추가
-    leftover_pool.sort(key=lambda x: x["published_dt"], reverse=True)
-
     remaining_slots = limit - len(final_selection)
     if remaining_slots > 0:
+        leftover_pool.sort(key=lambda x: x["published_dt"], reverse=True)
         final_selection.extend(leftover_pool[:remaining_slots])
 
     final_selection.sort(key=lambda x: x["published_dt"], reverse=True)

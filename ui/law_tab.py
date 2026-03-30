@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QSplitter,
     QScrollArea,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
@@ -15,7 +14,7 @@ from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 from core import law_scraper, db_manager
-from core.style import tw_sheet, COLORS
+from core.tw_utils import COLORS
 from core.signals import global_signals
 from core.worker import AsyncTask
 
@@ -45,14 +44,14 @@ class LawTab(QWidget):
         )
 
         control_layout = QHBoxLayout()
-        self.law_refresh_btn = StyledButton("선택 법령 정보 조회", COLORS["green-500"])
+        self.law_refresh_btn = StyledButton("🔍 법령 정보 조회", COLORS["green-500"])
         self.law_refresh_btn.clicked.connect(self.refresh_laws)
 
         control_layout.addStretch()
         control_layout.addWidget(self.law_refresh_btn)
         left_layout.addLayout(control_layout)
 
-        add_law_btn = QPushButton("➕ 법령 키워드 추가")
+        add_law_btn = StyledButton("➕ 법령 키워드 추가", COLORS["c33"])
         add_law_btn.clicked.connect(lambda: self.add_law_row("", True))
         left_layout.addWidget(add_law_btn)
 
@@ -80,7 +79,6 @@ class LawTab(QWidget):
         self.law_table = QTableWidget()
         self.law_table.setColumnCount(2)
         self.law_table.setHorizontalHeaderLabels(["법령명", "시행(예정)일자"])
-        self.law_table.setStyleSheet(tw_sheet({"QTableWidget::item": "p-10"}))
         self.law_table.verticalHeader().setDefaultSectionSize(35)
 
         header = self.law_table.horizontalHeader()
@@ -123,18 +121,18 @@ class LawTab(QWidget):
                 if law_name:
                     law_names.append(law_name)
 
-        if not law_name:
+        if not law_names:
             return
 
         self.law_refresh_btn.setEnabled(False)
         self.law_refresh_btn.setText("⏳ 법령 정보 조회 중...")
 
         # 백그라운드 작업 시작
-        self.worker = AsyncTask(self._fetch_laws_in_background, law_names)
-        self.worker.signals.result_ready.connect(self._on_laws_loaded)
-        self.worker.signals.error_occurred.connect(self._on_laws_error)
+        worker = AsyncTask(self._fetch_laws_in_background, law_names)
+        worker.signals.result_ready.connect(self._on_laws_loaded)
+        worker.signals.error_occurred.connect(self._on_laws_error)
 
-        QThreadPool.globalInstance().start(self.worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _fetch_laws_in_background(self, law_names):
         raw_infos = law_scraper.get_laws_by_keywords(law_names)
@@ -148,7 +146,12 @@ class LawTab(QWidget):
                 law_keys.add(unique_key)
                 all_law_infos.append(info)
 
-        all_law_infos.sort(key=lambda x: x["enforce_date"], reverse=True)
+        all_law_infos.sort(
+            key=lambda x: (
+                x["enforce_date"] if x["enforce_date"] != "정보 없음" else "0000.00.00"
+            ),
+            reverse=True,
+        )
         return all_law_infos
 
     def _on_laws_loaded(self, all_law_infos):
@@ -188,7 +191,7 @@ class LawTab(QWidget):
 
     def _on_laws_error(self, error_msg):
         self.law_refresh_btn.setEnabled(True)
-        self.law_refresh_btn.setText("선택 법령 정보 조회")
+        self.law_refresh_btn.setText("🔍 법령 정보 조회")
         print(f"법령 로딩 에러: {error_msg}")
 
     def open_law_link(self, item):

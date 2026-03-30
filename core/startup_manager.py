@@ -11,7 +11,8 @@ def get_executable_path():
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}"'
     else:
-        return os.path.abspath(sys.argv[0])
+        script_path = os.path.abspath(sys.argv[0])
+        return f'"{sys.executable}" "{script_path}"'
 
 
 def is_startup_enabled():
@@ -22,7 +23,7 @@ def is_startup_enabled():
             0,
             winreg.KEY_READ,
         ) as key:
-            winreg.QueryValueEx(key, APP_NAME)
+            _ = winreg.QueryValueEx(key, APP_NAME)
 
         return True
     except FileNotFoundError:

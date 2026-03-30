@@ -11,7 +11,7 @@ from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
 
 from core import db_manager
 from core.signals import global_signals
-from core.style import COLORS, tw
+from core.tw_utils import COLORS, tw
 from ui.components import (
     TitleLabel,
     StyledButton,
@@ -54,7 +54,7 @@ class RoadmapCanvas(QWidget):
         chart_width = width - self.g_width
 
         text_color = self.palette().color(QPalette.ColorRole.WindowText)
-        line_color = QColor(128, 128, 128, 60)
+        line_color = QColor(192, 192, 192, 90)
         header_bg = QColor(128, 128, 128, 30)
         group_bg = QColor(128, 128, 128, 15)
 
@@ -497,4 +497,4 @@ class RoadmapTab(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        QTimer.singleShot(10, self.canvas.draw_bars)
+        QTimer.singleShot(100, self.canvas.draw_bars)

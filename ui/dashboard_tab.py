@@ -16,7 +16,7 @@ from ui.components import TitleLabel, StyledButton
 from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper, policy_scraper
 from core.worker import AsyncTask
-from core.style import tw, tw_sheet, COLORS
+from core.tw_utils import tw, tw_sheet, COLORS
 
 
 class EllipsisLabel(QLabel):
@@ -64,7 +64,7 @@ class DashboardCard(QFrame):
             tw_sheet(
                 {
                     "QListWidget": "border-none bg-transparent",
-                    "QListWidget::item": "py-4 border-bb border-black-5",
+                    "QListWidget::item": "py-8 border-bb border-black-5",
                 }
             )
         )
@@ -156,11 +156,11 @@ class DashboardTab(QWidget):
         self.law_card.add_item("⏳ 데이터 불러오는 중...")
 
         # 백그라운드 스레드 생성 및 실행
-        self.worker = AsyncTask(self._fetch_data_in_background)
-        self.worker.signals.result_ready.connect(self._on_data_loaded)
-        self.worker.signals.error_occurred.connect(self._on_data_error)
+        worker = AsyncTask(self._fetch_data_in_background)
+        worker.signals.result_ready.connect(self._on_data_loaded)
+        worker.signals.error_occurred.connect(self._on_data_error)
 
-        QThreadPool.globalInstance().start(self.worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _fetch_data_in_background(self):
         """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""

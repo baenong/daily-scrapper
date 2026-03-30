@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
 )
 from PySide6.QtCore import Qt, QUrl, QThreadPool
 from PySide6.QtGui import QColor, QDesktopServices
@@ -19,7 +18,7 @@ from datetime import datetime, timezone
 
 from core import news_scraper, db_manager
 from core.worker import AsyncTask
-from core.style import COLORS, tw, tw_sheet
+from core.tw_utils import COLORS, tw, tw_sheet
 from ui.components import (
     TitleLabel,
     DescriptionLabel,
@@ -27,6 +26,9 @@ from ui.components import (
     EditableRowWidget,
     ArticleItemWidget,
 )
+
+ROLE_URL = Qt.ItemDataRole.UserRole + 1
+ROLE_FILTER = Qt.ItemDataRole.UserRole + 2
 
 
 class NewsTab(QWidget):
@@ -77,19 +79,20 @@ class NewsTab(QWidget):
         self.news_limit.setRange(1, 50)
         self.news_limit.setValue(self.settings.get("news_limit", 15))
         self.news_limit.valueChanged.connect(self.change_news_limit)
-        self.news_limit.setFixedWidth(60)
+        self.news_limit.setFixedWidth(65)
 
-        self.search_btn = StyledButton("검색", COLORS["green-500"])
+        self.search_btn = StyledButton("🔍 검색", COLORS["green-500"])
         self.search_btn.clicked.connect(self.search_news)
 
         cond_layout.addWidget(self.radio_and)
         cond_layout.addWidget(self.radio_or)
         cond_layout.addWidget(limit_label)
         cond_layout.addWidget(self.news_limit)
+        cond_layout.addWidget(QLabel(""), stretch=1)
         cond_layout.addWidget(self.search_btn)
         left_layout.addLayout(cond_layout)
 
-        add_btn = QPushButton("➕ 뉴스 키워드 추가")
+        add_btn = StyledButton("➕ 뉴스 키워드 추가", COLORS["c33"])
         add_btn.clicked.connect(lambda: self.add_keyword_row("", True))
         left_layout.addWidget(add_btn)
 
@@ -127,7 +130,7 @@ class NewsTab(QWidget):
 
         # 검색 결과
         self.news_list_view = QListWidget()
-        self.news_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-5"}))
+        self.news_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-2"}))
         self.news_list_view.itemDoubleClicked.connect(self.open_news_link)
         right_layout.addWidget(self.news_list_view)
 
@@ -177,20 +180,21 @@ class NewsTab(QWidget):
 
         is_and_cond = self.radio_and.isChecked()
         self.search_btn.setEnabled(False)
+        self.search_btn.setText("⏳ 검색 중...")
         self.news_list_view.addItem(
             "⏳ 구글 뉴스를 검색 중입니다. 잠시만 기다려주세요..."
         )
 
-        self.worker = AsyncTask(
+        worker = AsyncTask(
             self._fetch_news_in_background,
             selected_groups,
             is_and_cond,
             self.news_limit.value(),
         )
-        self.worker.signals.result_ready.connect(self._on_news_loaded)
-        self.worker.signals.error_occurred.connect(self._on_news_error)
+        worker.signals.result_ready.connect(self._on_news_loaded)
+        worker.signals.error_occurred.connect(self._on_news_error)
 
-        QThreadPool.globalInstance().start(self.worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _fetch_news_in_background(self, selected_groups, is_and_cond, limit):
         if is_and_cond:
@@ -202,6 +206,7 @@ class NewsTab(QWidget):
     def _on_news_loaded(self, news_items):
         """뉴스 로드가 완료되면 UI에 뿌려줍니다."""
         self.search_btn.setEnabled(True)
+        self.search_btn.setText("🔍 검색")
         self.news_list_view.clear()
 
         if not news_items:
@@ -211,10 +216,10 @@ class NewsTab(QWidget):
         now = datetime.now(timezone.utc)
         for news in news_items:
             item = QListWidgetItem(self.news_list_view)
-            item.setData(100, news["link"])
+            item.setData(ROLE_URL, news["link"])
 
             filter_text = f"{news['title']} {news['source']}".lower()
-            item.setData(101, filter_text)
+            item.setData(ROLE_FILTER, filter_text)
 
             custom_widget = ArticleItemWidget(
                 news["title"], news["source"], news["published_str"], "📰"
@@ -223,7 +228,8 @@ class NewsTab(QWidget):
             try:
                 delta = now - news["published_dt"]
                 if delta.days <= 3:
-                    item.setBackground(QColor(255, 0, 0, 30))
+                    custom_widget.set_highligt("bg-blue-500-30")
+
             except TypeError:
                 pass
 
@@ -241,7 +247,7 @@ class NewsTab(QWidget):
 
         for i in range(self.news_list_view.count()):
             item = self.news_list_view.item(i)
-            item_text = item.data(101)
+            item_text = item.data(ROLE_FILTER)
 
             if item_text is None:
                 continue

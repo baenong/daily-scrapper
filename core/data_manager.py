@@ -5,18 +5,27 @@ APP_NAME = "G-Daily"
 
 
 class SettingsManager:
+
+    DEFAULT_SETTINGS = {
+        "dark_mode": (True, bool),
+        "news_limit": (15, int),
+        "news_cond_and": (True, bool),
+        "window_opacity": (100, int),
+        "always_on_top": (False, bool),
+        "window_geometry": (None, None),
+    }
+
     @staticmethod
     def load() -> dict:
         settings = QSettings(ORG_NAME, APP_NAME)
+        loaded_settings = {}
+        for key, (default_val, val_type) in SettingsManager.DEFAULT_SETTINGS.items():
+            if val_type:
+                loaded_settings[key] = settings.value(key, default_val, type=val_type)
+            else:
+                loaded_settings[key] = settings.value(key, default_val)
 
-        return {
-            "dark_mode": settings.value("dark_mode", True, type=bool),
-            "news_limit": settings.value("news_limit", 15, type=int),
-            "news_cond_and": settings.value("news_cond_and", True, type=bool),
-            "window_opacity": settings.value("window_opacity", 100, type=int),
-            "always_on_top": settings.value("always_on_top", False, type=bool),
-            "window_geometry": settings.value("window_geometry", None),
-        }
+        return loaded_settings
 
     @staticmethod
     def save(settings_dict: dict):

@@ -1,13 +1,8 @@
 import os
 import requests
 import urllib.parse
-import urllib3
 import concurrent.futures
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-session = requests.Session()
-session.verify = False
+from core.network import global_session as session
 
 
 def format_date(date_str):
@@ -20,6 +15,7 @@ def get_law_group_info(law_name):
     api_key = os.environ.get("LAW_API_KEY", "")
 
     if not api_key:
+        print(f"API 오류: KEY가 존재하지 않습니다.")
         return []
 
     url = "https://www.law.go.kr/DRF/lawSearch.do"

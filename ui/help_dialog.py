@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 from PySide6.QtGui import QPixmap
-from core.style import tw_sheet, COLORS
+from core.tw_utils import COLORS
 from ui.components import TitleLabel, DescriptionLabel, StyledButton
 
 
@@ -21,11 +21,15 @@ def get_img_tag(filename, max_width=540):
     except Exception:
         base_path = os.path.abspath(".")
 
-    abs_path = os.path.join(base_path, "resources", filename)
+    abs_path = os.path.join(base_path, "resources", "help", filename)
+    pixmap = QPixmap(abs_path)
+
+    if pixmap.isNull():
+        return f"<div style='text-align: center; color: red;'>[이미지 파일 누락: {filename}]</div>"
+
     safe_path = abs_path.replace("\\", "/")
     img_url = f"file:///{safe_path}"
 
-    pixmap = QPixmap(abs_path)
     actual_width = pixmap.width()
     final_width = max_width if actual_width > max_width else actual_width
 
@@ -44,16 +48,6 @@ class HelpDialog(QDialog):
 
         # 탭 위젯 생성
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet(
-            tw_sheet(
-                {
-                    "QTabBar::tab": "p-8 text-14 bg-cE0 rounded-t-5 mr-2",
-                    "QTabBar::tab:selected": "bg-transparent border-b-2 border-blue-500",
-                    "QTabWidget::pane": "border border-cCC",
-                    "QTextBrowser": "bg-transparent border-c80 p-10 text-14 text-windowtext p-14",
-                }
-            )
-        )
 
         # 탭별 내용 추가
         self.add_help_tab("1. 메인화면", self.get_main_help())
@@ -195,7 +189,7 @@ class HelpDialog(QDialog):
         <h3>🗺️ 연간 로드맵 탭</h3>
         <div>■ <b>로드맵 연동:</b> 일정 관리에서 '★ 로드맵'으로 지정된 핵심 일정들이 연간 간트 차트 형태로 그려집니다.</div>
         {get_img_tag("help_roadmap.png")}
-        <div>■ <b>그룹 관리:</b> 상단의 [그룹 관리] 버튼을 눌러 프로젝트 등 관련 업무별로 그룹을 나누고 색상을 지정할 수 있습니다.\n
+        <div>■ <b>그룹 관리:</b> 상단의 [그룹 관리] 버튼을 눌러 프로젝트 등 관련 업무별로 그룹을 나누고 색상을 지정할 수 있습니다.<br>
                             일정 편집 화면에서도 ⚙️ 버튼을 클릭하여 그룹을 추가할 수 있습니다.</div>
         {get_img_tag("help_roadmap_group.png")}
         <div>■ <b>우클릭 빠른 메뉴:</b> 캘린더와 동일하게 막대나 글자를 우클릭하여 편집, 완료처리 및 삭제가 가능합니다.</div>

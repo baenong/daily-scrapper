@@ -16,8 +16,12 @@ from datetime import datetime, timezone
 
 from core import db_manager, policy_scraper
 from core.worker import AsyncTask
-from core.style import COLORS, tw, tw_sheet
+from core.tw_utils import COLORS, tw, tw_sheet
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, ArticleItemWidget
+
+ROLE_LINK = Qt.ItemDataRole.UserRole + 1
+ROLE_TITLE_FILTER = Qt.ItemDataRole.UserRole + 2
+ROLE_SOURCE_FILTER = Qt.ItemDataRole.UserRole + 3
 
 
 class PolicyTab(QWidget):
@@ -89,7 +93,7 @@ class PolicyTab(QWidget):
         right_layout.addLayout(filter_layout)
 
         self.policy_list_view = QListWidget()
-        self.policy_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-5"}))
+        self.policy_list_view.setStyleSheet(tw_sheet({"QListWidget::item": "p-2"}))
         self.policy_list_view.itemDoubleClicked.connect(self.open_link)
         right_layout.addWidget(self.policy_list_view)
 
@@ -141,18 +145,18 @@ class PolicyTab(QWidget):
         )
 
         # 2. 비동기 백그라운드 호출
-        self.worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
-        self.worker.signals.result_ready.connect(self._on_policy_loaded)
-        self.worker.signals.error_occurred.connect(self._on_policy_error)
+        worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
+        worker.signals.result_ready.connect(self._on_policy_loaded)
+        worker.signals.error_occurred.connect(self._on_policy_error)
 
-        QThreadPool.globalInstance().start(self.worker)
+        QThreadPool.globalInstance().start(worker)
 
     def _fetch_policy_in_background(self, rss_urls):
         return policy_scraper.get_policy_briefings(rss_urls, limit=50)
 
     def _on_policy_loaded(self, policy_items):
         self.search_btn.setEnabled(True)
-        self.search_btn.setText("선택 부처 브리핑 조회")
+        self.search_btn.setText("🔍 정책 브리핑 조회")
         self.policy_list_view.clear()
 
         if not policy_items:
@@ -162,12 +166,12 @@ class PolicyTab(QWidget):
         now = datetime.now(timezone.utc)
         for policy in policy_items:
             item = QListWidgetItem(self.policy_list_view)
-            item.setData(100, policy["link"])
+            item.setData(ROLE_LINK, policy["link"])
 
             filter_title_text = policy["title"].lower()
             filter_source_text = policy["source"].lower()
-            item.setData(101, filter_title_text)
-            item.setData(102, filter_source_text)
+            item.setData(ROLE_TITLE_FILTER, filter_title_text)
+            item.setData(ROLE_SOURCE_FILTER, filter_source_text)
 
             custom_widget = ArticleItemWidget(
                 policy["title"], policy["source"], policy["published_str"], "📢"
@@ -176,7 +180,7 @@ class PolicyTab(QWidget):
             try:
                 delta = now - policy["published_dt"]
                 if delta.days <= 2:
-                    item.setBackground(QColor(33, 150, 243, 30))
+                    custom_widget.set_highligt("bg-blue-500-30")
             except TypeError:
                 pass
 
@@ -201,8 +205,8 @@ class PolicyTab(QWidget):
 
         for i in range(self.policy_list_view.count()):
             item = self.policy_list_view.item(i)
-            item_text = item.data(101)
-            item_source = item.data(102)
+            item_text = item.data(ROLE_TITLE_FILTER)
+            item_source = item.data(ROLE_SOURCE_FILTER)
 
             if item_text is None or item_source is None:
                 continue
@@ -213,6 +217,6 @@ class PolicyTab(QWidget):
                 item.setHidden(True)
 
     def open_link(self, item):
-        url = item.data(100)
+        url = item.data(ROLE_LINK)
         if url:
             QDesktopServices.openUrl(QUrl(url))

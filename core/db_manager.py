@@ -138,6 +138,8 @@ def init_db():
                 if "repeat_rule" not in columns:
                     conn.execute("ALTER TABLE schedules ADD COLUMN repeat_rule TEXT")
 
+                conn.execute("PRAGMA user_version = 2")
+
             # ==========================================================================
             # Input Default Value
             # ==========================================================================

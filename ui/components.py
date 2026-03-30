@@ -36,7 +36,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, Signal, QTimer, QDate, QPoint
 from core import db_manager
 from core.signals import global_signals
-from core.style import DEFAULT_COLORS, COLORS, tw, tw_sheet
+from core.tw_utils import DEFAULT_COLORS, COLORS, tw, tw_sheet
 
 
 class StyledButton(QPushButton):
@@ -187,18 +187,24 @@ class ArticleItemWidget(QWidget):
     def __init__(self, title, source, pub_date, icon=""):
         super().__init__()
 
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(tw("bg-transparent"))
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 8, 5, 8)
         layout.setSpacing(8)
 
         self.title_label = QLabel(f"{icon} {title}")
-        self.title_label.setStyleSheet(tw("text-14"))
+        self.title_label.setStyleSheet(tw("text-14", "bg-transparent"))
 
         self.meta_label = QLabel(f"[{source}]  🗓️ {pub_date}")
-        self.meta_label.setStyleSheet(tw("text-13", "text-c77"))
+        self.meta_label.setStyleSheet(tw("text-13", "text-c77", "bg-transparent"))
 
         layout.addWidget(self.title_label)
         layout.addWidget(self.meta_label)
+
+    def set_highligt(self, bg="bg-transparent"):
+        self.setStyleSheet(tw(bg))
 
 
 class ClickableColorLabel(QLabel):
@@ -293,7 +299,7 @@ class ClickableEventLabel(QLabel, ScheduleActionMixin):
             tw_sheet(
                 {
                     "QMenu": "bg-white p-5 border-b border-cCC text-13 text-black no-underline",
-                    "QMenu::item": "py-6 px-10 no-underline",
+                    "QMenu::item": "py-6 px-10 no-underline text-c13",
                     "QMenu::item:selected": "bg-cF0",
                     "QMenu::item:disabled": "text-c33 font-bold bg-cFA",
                     "QMenu::separator": "h-1 bg-cE0 my-2 mx-0",
@@ -373,6 +379,14 @@ class GroupManagerDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(
+            tw_sheet(
+                {
+                    "QListWidget": "p-5",
+                    "QListWidget::item": "p-5",
+                }
+            )
+        )
         layout.addWidget(self.list_widget)
 
         input_layout = QHBoxLayout()
@@ -463,7 +477,6 @@ class EventDialog(QDialog):
         repeat_layout.addWidget(TitleLabel("🔁 반복", 14))
         self.repeat_combo = QComboBox()
         self.repeat_combo.addItems(["반복 없음", "일", "주", "월", "연"])
-        self.repeat_combo.setStyleSheet(tw("py-2 px-4"))
         self.repeat_combo.setFixedWidth(100)
         repeat_layout.addWidget(self.repeat_combo)
         repeat_layout.addStretch()
@@ -471,9 +484,7 @@ class EventDialog(QDialog):
 
         # Repeat Detail(Hidden default)
         self.repeat_detail_widget = QWidget()
-        self.repeat_detail_widget.setStyleSheet(
-            tw_sheet({"QComboBox": "py-2 px-8", "QCheckBox": "mt-2"})
-        )
+        self.repeat_detail_widget.setStyleSheet(tw_sheet({"QCheckBox": "mt-2"}))
         detail_layout = QVBoxLayout(self.repeat_detail_widget)
         detail_layout.setContentsMargins(5, 5, 5, 5)
         detail_layout.addWidget(Separator())
@@ -558,7 +569,6 @@ class EventDialog(QDialog):
         self.month_day_combo.setFixedWidth(60)
         nth_opt_layout.addWidget(self.month_nth_radio)
         nth_opt_layout.addWidget(self.month_nth_combo)
-        nth_opt_layout.addWidget(QLabel("주 "))
         nth_opt_layout.addWidget(self.month_day_combo)
         nth_opt_layout.addWidget(QLabel("요일"))
         nth_opt_layout.addStretch()
@@ -624,7 +634,6 @@ class EventDialog(QDialog):
         color_layout.addStretch()
 
         self.color_combo = QComboBox()
-        self.color_combo.setStyleSheet(tw("py-2"))
         self.color_combo.setMinimumWidth(125)
         self.colors = DEFAULT_COLORS.copy()
         custom_colors = db_manager.get_custom_colors()
@@ -730,6 +739,12 @@ class EventDialog(QDialog):
 
                 self.month_date_radio.setChecked(True)
                 self.month_date_spin.setValue(start_date.day())
+
+                target_dow = start_date.dayOfWeek() - 1
+                nth_occurrence = (start_date.day() - 1) // 7
+
+                self.month_nth_combo.setCurrentIndex(nth_occurrence)
+                self.month_day_combo.setCurrentIndex(target_dow)
 
             elif idx == 4:  # 년
                 self.interval_unit_label.setText("년 마다")
@@ -983,8 +998,10 @@ class EventDialog(QDialog):
             # 종료일 검사
             if self.has_repeat_end_cb.isChecked():
                 repeat_end_date = self.repeat_end.date()
-                if QDate.currentDate() > repeat_end_date:
-                    QMessageBox.warning(self, "오류", "반복 종료일이 이미 지났습니다.")
+                if start_date > repeat_end_date:
+                    QMessageBox.warning(
+                        self, "오류", "반복 종료일이 일정 시작일보다 빠를 수 없습니다."
+                    )
                     return
                 repeat_end_str = repeat_end_date.toString("yyyy-MM-dd")
 

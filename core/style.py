@@ -1,226 +1,299 @@
-# Event Dialog에서 사용하는 기본 색상 코드
-DEFAULT_COLORS = {
-    " 빨간색": "#FF968A",
-    " 주황색": "#FFAD60",
-    " 노란색": "#F4D980",
-    " 초록색": "#B2FBA5",
-    " 파란색": "#A9CBD7",
-    " 보라색": "#C4BEE2",
-}
-
-COLORS = {
-    "red-300": "#FF968A",
-    "red-400": "#FFC0CC",
-    "red-500": "#F44336",
-    "red-700": "#D32F2F",
-    "green-300": "#B2FBA5",
-    "green-500": "#4CAF50",
-    "blue-300": "#E3F2FD",
-    "blue-500": "#2196F3",
-    "blue-600": "#A6DAF4",
-    "blue-700": "#1976D2",
-    "black-300": "#202124",
-    "c13": "#131313",
-    "c33": "#333333",
-    "c77": "#777777",
-    "c80": "#808080",
-    "c9E": "#9E9E9E",
-    "c99": "#999999",
-    "cCC": "#CCCCCC",
-    "cDD": "#DDDDDD",
-    "cF0": "#F0F0F0",
-    "cF5": "#F5F5F5",
-    "cFA": "#FAFAFA",
-    "black": "#000000",
-    "white": "#FFFFFF",
-    "red": "#FF0000",
-    "green": "#00FF00",
-    "blue": "#0000FF",
-    "gray": "#808080",
-    "purple": "#673AB7",
-    "transparent": "transparent",
-}
-
-BORDER_STYLES = {"b", "bb", "solid", "dashed", "dotted", "double", "none"}
-
-STYLES = {
-    "rounded": "border-radius: 4px;",
-    "border": "border-width: 1px;",
-    "font-bold": "font-weight: bold;",
-    "text-windowtext": "color: palette(window-text);",
-    "line-through": "text-decoration: line-through;",
-    "no-underline": "text-decoration: none;",
-}
+import sys
+import os
+from PySide6.QtWidgets import QApplication, QStyleFactory, QProxyStyle, QStyle
+from PySide6.QtGui import QPalette, QColor
+from PySide6.QtCore import Qt
+from core.tw_utils import tw, tw_sheet, COLORS
 
 
-def hex_to_rgba(hex_code, opacity_pct):
-    if hex_code == "transparent":
-        return "transparent"
+class GlobalProxyStyle(QProxyStyle):
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_ComboBox_Popup:
+            return 0
 
-    hex_code = hex_code.lstrip("#")
-    if len(hex_code) == 6:
-        r = int(hex_code[0:2], 16)
-        g = int(hex_code[2:4], 16)
-        b = int(hex_code[4:6], 16)
-        a = int(opacity_pct) / 100.0  # 50 -> 0.5
-        return f"rgba({r}, {g}, {b}, {a})"
+        if hint == QStyle.StyleHint.SH_ScrollBar_LeftClickAbsolutePosition:
+            return 1
 
-    return f"#{hex_code}"
+        return super().styleHint(hint, option, widget, returnData)
 
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PrimitiveElement.PE_FrameFocusRect:
+            return
 
-def parse_color(c: str, prefix, css_prop):
-    if not c.startswith(prefix):
-        return None
-
-    rest = c[len(prefix) :]
-
-    # 투명도가 없는 기본 색상인 경우 (예: blue-500)
-    if rest in COLORS:
-        return f"{css_prop}: {COLORS[rest]};"
-
-    # 투명도가 포함된 경우 (예: blue-500-50)
-    if "-" in rest:
-        color_name, opacity_str = rest.rsplit("-", 1)
-
-        if color_name in COLORS and opacity_str.isdigit():
-            rgba_val = hex_to_rgba(COLORS[color_name], opacity_str)
-            return f"{css_prop}: {rgba_val};"
-
-    return None
+        super().drawPrimitive(element, option, painter, widget)
 
 
-def tw(*classes: str):
-    """사용법: widget.setStyleSheet(tw("bg-blue-500", "text-white", "rounded", "p-2"))"""
+def get_qss_image_path(filename: str) -> str:
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    style = []
-
-    for c in classes:
-        # Parsing Color
-        if c.startswith("bg-"):
-            parsed = parse_color(c, "bg-", "background-color")
-            if parsed:
-                style.append(parsed)
-
-        elif c.startswith("text-"):
-            val = c[5:]
-            if val.isdigit():
-                style.append(f"font-size: {val}px;")
-            else:
-                parsed = parse_color(c, "text-", "color")
-                if parsed:
-                    style.append(parsed)
-
-        elif c.startswith("border-"):
-            val = c[7:]
-            if val.isdigit():
-                style.append(f"border-width: {val}px;")
-
-            # 스타일 처리 (border-solid, border-dashed 등)
-            elif val in BORDER_STYLES:
-                if val == "b":
-                    style.append("border: 1px solid;")
-                elif val == "bb":
-                    style.append("border-bottom: 1px solid;")
-                else:
-                    style.append(f"border-style: {val};")
-
-            # 색상 처리 (나머지는 색상으로 간주하고 parse_color로 넘김)
-            else:
-                parsed = parse_color(c, "border-", "border-color")
-                if parsed:
-                    style.append(parsed)
-
-        # Gridline
-        elif c.startswith("grid-"):
-            parsed = parse_color(c, "grid-", "gridline-color")
-            if parsed:
-                style.append(parsed)
-
-        # rounded
-        elif c.startswith("rounded-"):
-            val = c[8:]
-            if val.isdigit():
-                style.append(f"border-radius: {val}px;")
-            else:
-                v = val[2:]
-                if val.startswith("r-"):
-                    style.append(
-                        f"border-top-right-radius: {v}px; "
-                        f"border-bottom-right-radius: {v}px; "
-                        f"border-top-left-radius: 0px; "
-                        f"border-bottom-left-radius: 0px;"
-                    )
-                elif val.startswith("l-"):
-                    style.append(
-                        f"border-top-left-radius: {v}px; "
-                        f"border-bottom-left-radius: {v}px; "
-                        f"border-top-right-radius: 0px; "
-                        f"border-bottom-right-radius: 0px;"
-                    )
-
-        # Padding (p-, px-, py-, pt-, pb-, pl-, pr-)
-        elif c.startswith("p-"):
-            style.append(f"padding: {c[2:]}px;")
-        elif c.startswith("px-"):
-            style.append(f"padding-left: {c[3:]}px; padding-right: {c[3:]}px;")
-        elif c.startswith("py-"):
-            style.append(f"padding-top: {c[3:]}px; padding-bottom: {c[3:]}px;")
-        elif c.startswith("pt-"):
-            style.append(f"padding-top: {c[3:]}px;")
-        elif c.startswith("pr-"):
-            style.append(f"padding-right: {c[3:]}px;")
-        elif c.startswith("pb-"):
-            style.append(f"padding-bottom: {c[3:]}px;")
-        elif c.startswith("pl-"):
-            style.append(f"padding-left: {c[3:]}px;")
-
-        # Margin (m-, mx-, my-, mt-, mb-, ml-, mr-)
-        elif c.startswith("m-"):
-            style.append(f"margin: {c[2:]}px;")
-        elif c.startswith("mx-"):
-            style.append(f"margin-left: {c[3:]}px; margin-right: {c[3:]}px;")
-        elif c.startswith("my-"):
-            style.append(f"margin-top: {c[3:]}px; margin-bottom: {c[3:]}px;")
-        elif c.startswith("mt-"):
-            style.append(f"margin-top: {c[3:]}px;")
-        elif c.startswith("mr-"):
-            style.append(f"margin-right: {c[3:]}px;")
-        elif c.startswith("mb-"):
-            style.append(f"margin-bottom: {c[3:]}px;")
-        elif c.startswith("ml-"):
-            style.append(f"margin-left: {c[3:]}px;")
-
-        # Width and Height
-        elif c.startswith("h-"):
-            style.append(f"height: {c[2:]}px;")
-        elif c.startswith("w-"):
-            style.append(f"width: {c[2:]}px;")
-
-        else:
-            style.append(STYLES.get(c, ""))
-
-    return " ".join(style)
+    abs_path = os.path.join(base_path, "resources", "svg", filename)
+    return abs_path.replace("\\", "/")
 
 
-def tw_sheet(rules: dict) -> str:
-    """
-    선택자와 Tailwind 클래스들을 딕셔너리로 받아 QSS를 생성합니다.
-    tw_sheet({
-        "QMenu": ["bg-white", "p-5", "border-1"], # 배열 형식 가능
-        "QMenu::item": "py-6 px-20 no-underline" # 띄어쓰기도 가능
-    })
-    """
-    qss_lines = []
+def get_global_qss(is_dark: bool) -> str:
 
-    for selector, classes in rules.items():
-        # 1. 단일 문자열이면 리스트로 분할
-        if isinstance(classes, str):
-            classes = classes.split()
+    input_bg = "black-400" if is_dark else "white"
+    item_bg = "black-300" if is_dark else "white"
+    header_bg = "black-400" if is_dark else "cF0"
+    border_color = "c44" if is_dark else "cCC"
+    text_color = "white" if is_dark else "c13"
+    blue_color = "blue-500"
 
-        # 2. tw로 파싱
-        properties = tw(*classes)
+    hover_bg = "black-300" if is_dark else "cF5"
 
-        # 3. QSS 반환
-        qss_lines.append(f"{selector} {{ {properties} }}")
+    tab_selected_bg = "black-300" if is_dark else "white"
+    disabled_bg = "black-300" if is_dark else "cF5"
+    disabled_text = "c80"
+    scrollbar_bg = "c80-5"
+    scrollbar_handle = "c80-30"
+    scrollbar_handle_hover = "c80-50"
 
-    return "\n".join(qss_lines)
+    img_path = get_qss_image_path("")
+    base_style = f"bg-{input_bg} border-b border-{border_color} rounded-4 text-{text_color} sel-bg-{blue_color}"
+
+    basic_rules = {
+        #
+        # Base Style
+        #
+        "QLineEdit, QTextEdit, QComboBox, QDateEdit, QListWidget": base_style + " p-5",
+        "QSpinBox": base_style + " py-3 px-10",
+        #
+        # Focus
+        #
+        """
+        QLineEdit:focus, 
+        QTextEdit:focus, 
+        QSpinBox:focus, 
+        QComboBox:focus, 
+        QDateEdit:focus
+        """: f"border-b border-{blue_color}",
+        #
+        # Disabled
+        #
+        """
+        QLineEdit:disabled, 
+        QTextEdit:disabled, 
+        QSpinBox:disabled, 
+        QComboBox:disabled, 
+        QDateEdit:disabled
+        """: f"bg-{disabled_bg} text-{disabled_text} border-{border_color}",
+        #
+        # CheckBox
+        #
+        "QCheckBox, QRadioButton": "space-8",
+        "QCheckBox::indicator, QRadioButton::indicator": "w-16 h-16",
+        #
+        # HeaderView
+        #
+        "QHeaderView": "bg-transparent border-none",
+        "QHeaderView::section": f"""bg-{header_bg} text-{text_color} font-bold 
+                                    py-8 px-5 border-b border-{border_color}""",
+        #
+        # Table
+        #
+        "QTableWidget": f"""border-none bg-{item_bg} grid-{border_color}
+                            sel-bg-{blue_color} text-{text_color}""",
+        "QTableWidgetItem": f"bg-{item_bg} text-{text_color}",
+        "QTableCornerButton::section": f"bg-{header_bg} border-b border-{border_color}",
+        #
+        # TabBar
+        #
+        "QTabBar::tab": f"bg-transparent text-{text_color} px-8 py-6 mr-2 rounded-t-4",
+        "QTabBar::tab:selected": f"""bg-{tab_selected_bg} text-{text_color} 
+                                    border-bb-3 border-{blue_color}""",
+    }
+
+    qss_base = tw_sheet(basic_rules)
+
+    combo_qss = f"""
+        QComboBox QAbstractItemView {{
+            {tw(f"border-b", f"border-{border_color}", f"sel-bg-{blue_color}")}
+        }}
+
+        QComboBox QAbstractItemView::item {{
+            padding: 5px;
+        }}
+
+        QComboBox::down-arrow {{
+            image: url({img_path}/combo_arrow.svg);
+            {tw("w-18", "h-18")}
+        }}
+
+        QComboBox::down-arrow:disabled {{ image: none; }}
+
+        QComboBox::drop-down, QDateEdit::drop-down, QDateTimeEdit::drop-down {{
+            subcontrol-origin: padding;
+            subcontrol-position: center right;
+            padding-top: 2px;
+            width: 18px;
+
+            border-left-style: none;
+            border-top-right-radius: 3px;
+            border-bottom-right-radius: 3px;
+        }}
+        """
+
+    cb_qss = f"""
+        QCheckBox::indicator:unchecked {{
+            image: url({img_path}/cb_unchecked.svg);
+            {tw("w-18", "h-18")}
+        }}
+
+        QCheckBox::indicator:checked {{
+            image: url({img_path}/cb_checked.svg);
+            {tw("w-18", "h-18")}
+        }}
+
+        QCheckBox::indicator:unchecked:hover {{
+            image: url({img_path}/cb_unchecked_hover.svg);
+        }}
+        """
+
+    abstract_qss = f"""
+        QAbstractSpinBox::up-button, 
+        QAbstractSpinBox::down-button {{
+            border-left: 1px;
+            {tw("bg-transparent", "border-solid", f"border-{border_color}")}
+        }}
+
+        QAbstractSpinBox::up-button:hover, 
+        QAbstractSpinBox::down-button:hover {{
+            {tw("bg-c80-10")}
+        }}
+
+        QAbstractSpinBox::up-arrow {{
+            image: url({img_path}/spin_up.svg);
+            {tw("w-10", "h-10")}
+        }}
+
+        QAbstractSpinBox::down-arrow {{
+            image: url({img_path}/spin_down.svg);
+            {tw("w-10", "h-10")}
+        }}
+
+        QAbstractSpinBox::up-arrow:disabled, 
+        QAbstractSpinBox::down-arrow:disabled {{ image: none; }}
+
+        QTableWidget, QScrollArea QWidget {{
+            {tw("bg-transparent")}
+        }}
+
+        QScrollArea {{
+            {tw("bg-transparent", "border-b", "border-c33", "rounded-4")}
+        }}
+        """
+
+    listwidget_rules = {
+        "QListWidget": "bg-transparent",
+        "QListWidget::item": f"text-{text_color} rounded-4",
+        "QListWidget::item:hover": f"bg-{hover_bg}",
+        "QListWidget::item:selected": f"bg-{blue_color} text-white border-none",
+    }
+    listwidget_qss = tw_sheet(listwidget_rules)
+
+    calendar_qss = f"""
+        QDateEdit::down-arrow, QDateTimeEdit::down-arrow {{
+            image: url({img_path}/date_calendar.svg);
+            {tw("w-18", "h-18")}
+        }}
+
+        QCalendarWidget QWidget {{
+            alternate-background-color: {COLORS[item_bg]}; 
+            background-color: {COLORS[input_bg]};
+        }}
+
+        QCalendarWidget QAbstractItemView:enabled {{
+            color: {COLORS[text_color]};
+            background-color: {COLORS[input_bg]};
+            selection-background-color: {COLORS[blue_color]};
+            selection-color: white;
+            border-radius: 4px;
+        }}
+        
+        QCalendarWidget QToolButton {{
+            {tw(f"text-{text_color}", "bg-transparent", "m-2")}
+        }}
+
+        QCalendarWidget QToolButton:hover {{ 
+            {tw("bg-c80", "rounded-4")}
+        }}
+        
+        QCalendarWidget QMenu {{ 
+            background-color: {COLORS[input_bg]}; 
+            color: {COLORS[text_color]}; 
+        }}
+        """
+
+    menu_rules = {
+        "QMenu": f"bg-{item_bg} border-b border-{border_color} rounded-6 py-4",
+        "QMenu::item": f"py-6 px-24 bg-transparent text-{text_color}",
+        "QMenu::item:selected": f"bg-{blue_color} text-white rounded-4",
+        "QMenu::item:disabled": f"text-{disabled_text} bg-transparent",
+        "QMenu::separator": f"h-1 my-2 bg-{border_color}",
+    }
+    menu_qss = tw_sheet(menu_rules)
+
+    scrollbar_rules = {
+        # ScrollBar
+        "QScrollBar:vertical": f"border-none bg-{scrollbar_bg} w-10 m-0 rounded-5",
+        "QScrollBar::handle:vertical": f"bg-{scrollbar_handle} rounded-5 min-h-30",
+        "QScrollBar::handle:vertical:hover": f"bg-{scrollbar_handle_hover}",
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical": "h-0",
+        "QScrollBar:horizontal": f"border-none bg-{scrollbar_bg} h-10 m-0 rounded-5",
+        "QScrollBar::handle:horizontal": f"bg-{scrollbar_handle} rounded-5 min-w-30",
+        "QScrollBar::handle:horizontal:hover": f"bg-{scrollbar_handle_hover}",
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal": "w-0",
+    }
+    scrollbar_qss = tw_sheet(scrollbar_rules)
+
+    return (
+        qss_base
+        + abstract_qss
+        + combo_qss
+        + cb_qss
+        + listwidget_qss
+        + calendar_qss
+        + menu_qss
+        + scrollbar_qss
+    )
+
+
+def setup_theme(app: QApplication, is_dark: bool):
+    """애플리케이션 전체의 테마(프록시, 팔레트, QSS)를 한 번에 세팅합니다."""
+
+    base_style = QStyleFactory.create("Fusion")
+    app.setStyle(GlobalProxyStyle(base_style))
+
+    palette = QPalette()
+    if is_dark:
+        palette.setColor(QPalette.ColorRole.Window, QColor(32, 33, 36))
+        palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.Base, QColor(40, 42, 45))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(50, 52, 55))
+        palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.black)
+        palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.Button, QColor(50, 52, 55))
+        palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+        palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+    else:
+        palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 245))
+        palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.black)
+        palette.setColor(QPalette.ColorRole.Base, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(240, 240, 240))
+        palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.white)
+        palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.black)
+        palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.black)
+        palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+        palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.black)
+        palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+        palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+
+    app.setPalette(palette)
+    app.setStyleSheet(get_global_qss(is_dark))
