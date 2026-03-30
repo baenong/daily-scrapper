@@ -1,5 +1,5 @@
 import traceback
-from PySide6.QtCore import Signal, QObject, QRunnable, Slot
+from PySide6.QtCore import Signal, QObject, QRunnable, Slot, QThreadPool
 
 
 class WorkerSignals(QObject):
@@ -27,3 +27,12 @@ class AsyncTask(QRunnable):
             self.signals.error_occurred.emit(error_msg)
         finally:
             self.signals.finished.emit()
+
+
+def run_async(target_func, on_success=None, on_error=None, *args, **kwargs):
+    worker = AsyncTask(target_func, *args, **kwargs)
+    if on_success:
+        worker.signals.result_ready.connect(on_success)
+    if on_error:
+        worker.signals.error_occurred.connect(on_error)
+    QThreadPool.globalInstance().start(worker)

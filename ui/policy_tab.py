@@ -11,11 +11,11 @@ from PySide6.QtWidgets import (
     QComboBox,
 )
 from PySide6.QtCore import Qt, QUrl, QThreadPool
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QDesktopServices
 from datetime import datetime, timezone
 
 from core import db_manager, policy_scraper
-from core.worker import AsyncTask
+from core.worker import AsyncTask, run_async
 from core.tw_utils import COLORS, tw, tw_sheet
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, ArticleItemWidget
 
@@ -145,11 +145,17 @@ class PolicyTab(QWidget):
         )
 
         # 2. 비동기 백그라운드 호출
-        worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
-        worker.signals.result_ready.connect(self._on_policy_loaded)
-        worker.signals.error_occurred.connect(self._on_policy_error)
+        run_async(
+            self._fetch_policy_in_background,
+            self._on_policy_loaded,
+            self._on_policy_error,
+            selected_urls,
+        )
+        # worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
+        # worker.signals.result_ready.connect(self._on_policy_loaded)
+        # worker.signals.error_occurred.connect(self._on_policy_error)
 
-        QThreadPool.globalInstance().start(worker)
+        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_policy_in_background(self, rss_urls):
         return policy_scraper.get_policy_briefings(rss_urls, limit=50)

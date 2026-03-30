@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
 )
 from PySide6.QtCore import Qt, QUrl, QThreadPool
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QDesktopServices
 from datetime import datetime, timezone
 
 from core import news_scraper, db_manager
-from core.worker import AsyncTask
+from core.worker import AsyncTask, run_async
 from core.tw_utils import COLORS, tw, tw_sheet
 from ui.components import (
     TitleLabel,
@@ -185,16 +185,24 @@ class NewsTab(QWidget):
             "⏳ 구글 뉴스를 검색 중입니다. 잠시만 기다려주세요..."
         )
 
-        worker = AsyncTask(
+        run_async(
             self._fetch_news_in_background,
+            self._on_news_loaded,
+            self._on_news_error,
             selected_groups,
             is_and_cond,
             self.news_limit.value(),
         )
-        worker.signals.result_ready.connect(self._on_news_loaded)
-        worker.signals.error_occurred.connect(self._on_news_error)
+        # worker = AsyncTask(
+        #     self._fetch_news_in_background,
+        #     selected_groups,
+        #     is_and_cond,
+        #     self.news_limit.value(),
+        # )
+        # worker.signals.result_ready.connect(self._on_news_loaded)
+        # worker.signals.error_occurred.connect(self._on_news_error)
 
-        QThreadPool.globalInstance().start(worker)
+        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_news_in_background(self, selected_groups, is_and_cond, limit):
         if is_and_cond:

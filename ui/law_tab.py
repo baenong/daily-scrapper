@@ -16,7 +16,7 @@ from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRo
 from core import law_scraper, db_manager
 from core.tw_utils import COLORS
 from core.signals import global_signals
-from core.worker import AsyncTask
+from core.worker import AsyncTask, run_async
 
 
 class LawTab(QWidget):
@@ -128,11 +128,17 @@ class LawTab(QWidget):
         self.law_refresh_btn.setText("⏳ 법령 정보 조회 중...")
 
         # 백그라운드 작업 시작
-        worker = AsyncTask(self._fetch_laws_in_background, law_names)
-        worker.signals.result_ready.connect(self._on_laws_loaded)
-        worker.signals.error_occurred.connect(self._on_laws_error)
+        run_async(
+            self._fetch_laws_in_background,
+            self._on_laws_loaded,
+            self._on_laws_error,
+            law_names,
+        )
+        # worker = AsyncTask(self._fetch_laws_in_background, law_names)
+        # worker.signals.result_ready.connect(self._on_laws_loaded)
+        # worker.signals.error_occurred.connect(self._on_laws_error)
 
-        QThreadPool.globalInstance().start(worker)
+        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_laws_in_background(self, law_names):
         raw_infos = law_scraper.get_laws_by_keywords(law_names)

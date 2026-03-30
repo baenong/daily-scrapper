@@ -8,14 +8,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QHBoxLayout,
 )
-from PySide6.QtCore import Qt, QDate, QThreadPool
+from PySide6.QtCore import Qt, QDate
 from datetime import datetime
 
 # 공통 부품 및 코어 모듈 불러오기
 from ui.components import TitleLabel, StyledButton
 from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper, policy_scraper
-from core.worker import AsyncTask
+from core.worker import run_async
 from core.tw_utils import tw, tw_sheet, COLORS
 
 
@@ -156,11 +156,14 @@ class DashboardTab(QWidget):
         self.law_card.add_item("⏳ 데이터 불러오는 중...")
 
         # 백그라운드 스레드 생성 및 실행
-        worker = AsyncTask(self._fetch_data_in_background)
-        worker.signals.result_ready.connect(self._on_data_loaded)
-        worker.signals.error_occurred.connect(self._on_data_error)
+        run_async(
+            self._fetch_data_in_background, self._on_data_loaded, self._on_data_error
+        )
+        # worker = AsyncTask(self._fetch_data_in_background)
+        # worker.signals.result_ready.connect(self._on_data_loaded)
+        # worker.signals.error_occurred.connect(self._on_data_error)
 
-        QThreadPool.globalInstance().start(worker)
+        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_data_in_background(self):
         """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
