@@ -108,7 +108,8 @@ def tw(*classes: str):
         elif c.startswith("text-"):
             val = c[5:]
             if val.isdigit():
-                style.append(f"font-size: {val}px;")
+                em_val = int(val) / 14.0
+                style.append(f"font-size: {em_val:.3f}em;")
             else:
                 parsed = parse_color(c, "text-", "color")
                 if parsed:

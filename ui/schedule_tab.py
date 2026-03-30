@@ -393,6 +393,7 @@ class ScheduleTab(QWidget):
         self.build_calendar()
         global_signals.schedule_updated.connect(self.refresh_all_data)
         global_signals.law_keyword_updated.connect(self.invalidate_law_cache)
+        global_signals.font_size_changed.connect(self.on_font_changed)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -812,6 +813,10 @@ class ScheduleTab(QWidget):
 
         self.current_date = QDate(int(year_str), int(month_str), 1)
         self.build_calendar()
+
+    def on_font_changed(self):
+        if self.isVisible():
+            QTimer.singleShot(10, self.draw_overlays)
 
     def go_today(self):
         self.current_date = QDate.currentDate()

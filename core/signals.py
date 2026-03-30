@@ -8,5 +8,8 @@ class GlobalSignals(QObject):
     roadmap_group_updated = Signal()
     law_keyword_updated = Signal()
 
+    # Font
+    font_size_changed = Signal()
+
 
 global_signals = GlobalSignals()

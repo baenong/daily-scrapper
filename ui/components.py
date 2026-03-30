@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFrame,
     QInputDialog,
+    QSizePolicy,
 )
 from PySide6.QtGui import (
     QColor,
@@ -83,7 +84,7 @@ class StyledButton(QPushButton):
                 border: none;
                 border-radius: 4px;
                 padding: {padding};
-                height: 20px;
+                min-height: 20px;
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
@@ -365,7 +366,8 @@ class CustomDateEdit(QDateEdit):
         super().__init__(date_str)
         self.setCalendarPopup(True)
         self.setDisplayFormat("yy.MM.dd (ddd)")
-        self.setFixedWidth(125)
+        self.setMinimumWidth(125)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
 class GroupManagerDialog(QDialog):

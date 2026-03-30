@@ -269,6 +269,6 @@ class NewsTab(QWidget):
         self.settings["news_limit"] = self.news_limit.value()
 
     def open_news_link(self, item):
-        url = item.data(100)
+        url = item.data(ROLE_URL)
         if url:
             QDesktopServices.openUrl(QUrl(url))

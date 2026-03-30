@@ -1,8 +1,9 @@
 import sys
 import ctypes
 import keyboard
-from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction, QPainter
+from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -11,20 +12,21 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QCheckBox,
+    QSpinBox,
     QSlider,
     QSizeGrip,
-    QApplication,
     QMenu,
     QSystemTrayIcon,
     QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt, Signal, QObject
+from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
 
 # core module
 from core import startup_manager
 from core.data_manager import SettingsManager
 from core.tw_utils import COLORS, tw, tw_sheet
-from core.style import setup_theme
+from core.style import setup_theme, get_global_qss
+from core.signals import global_signals
 
 # Components
 from ui.components import StyledButton
@@ -96,10 +98,17 @@ class DailyScraper(QMainWindow):
         self.update_background_opacity()
 
         # Qt Rendering Bug Fix
-        self.toggle_widget_mode(is_init=True)
-        self.toggle_widget_mode(is_init=True)
+        self.setWindowOpacity(0.0)
+
+        self.toggle_widget_mode()
+        self.toggle_widget_mode()
         self.toggle_theme(animate=False)
         self.toggle_theme(animate=False)
+
+        QApplication.processEvents()
+
+        self.hide()
+        self.setWindowOpacity(1.0)
 
         # 글로벌 단축키
         # self.hotkey_signal = HotKeySignal()
@@ -130,6 +139,16 @@ class DailyScraper(QMainWindow):
         self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.widget_btn.clicked.connect(self.toggle_widget_mode)
 
+        self.zoom_label = QLabel(" 화면 배율:")
+        self.zoom_spinbox = QSpinBox()
+        self.zoom_spinbox.setRange(70, 175)
+        self.zoom_spinbox.setSingleStep(5)
+        self.zoom_spinbox.setValue(100)
+        self.zoom_spinbox.setSuffix("%")
+        self.zoom_spinbox.setMinimumWidth(60)
+        self.zoom_spinbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.zoom_spinbox.valueChanged.connect(self.on_zoom_changed)
+
         self.top_checkbox = QCheckBox("📌 맨 앞 고정")
         self.top_checkbox.setStyleSheet(tw("text-c77", "mr-5"))
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
@@ -158,6 +177,8 @@ class DailyScraper(QMainWindow):
         bottom_layout.addWidget(self.theme_checkbox)
         bottom_layout.addWidget(self.widget_btn)
         bottom_layout.addStretch()
+        bottom_layout.addWidget(self.zoom_label)
+        bottom_layout.addWidget(self.zoom_spinbox)
         bottom_layout.addWidget(self.top_checkbox)
         bottom_layout.addWidget(self.opacity_label)
         bottom_layout.addWidget(self.opacity_slider)
@@ -186,6 +207,9 @@ class DailyScraper(QMainWindow):
         self.tray_icon.setToolTip("G-Daily")
 
         tray_menu = QMenu()
+        tray_font = tray_menu.font()
+        tray_font.setPixelSize(14)
+        tray_menu.setFont(tray_font)
 
         open_action = QAction("활성화", self)
         open_action.triggered.connect(self.bring_to_front)
@@ -205,6 +229,17 @@ class DailyScraper(QMainWindow):
     def apply_native_theme(self, is_dark: bool):
         app: QApplication = QApplication.instance()
         setup_theme(app, is_dark)
+
+    def apply_global_font_size(self, new_size):
+        app: QApplication = QApplication.instance()
+        font = app.font()
+
+        if font.pixelSize() != new_size:
+            font.setPixelSize(new_size)
+            app.setFont(font)
+            app.setStyleSheet(get_global_qss(self.is_dark))
+
+            global_signals.font_size_changed.emit()
 
     def enforce_dark_titlebar(self, is_dark: bool):
         # 윈도우 운영체제일 때만 작동하도록 방어 코드 작성
@@ -250,7 +285,7 @@ class DailyScraper(QMainWindow):
         self.setWindowFlags(flags)
         self.show()
 
-    def toggle_widget_mode(self, is_init=False):
+    def toggle_widget_mode(self):
         self.is_widget_mode = not self.is_widget_mode
         self.setAttribute(
             Qt.WidgetAttribute.WA_TranslucentBackground, self.is_widget_mode
@@ -271,8 +306,7 @@ class DailyScraper(QMainWindow):
             self.size_grip.show()
             self.update_background_opacity()
 
-            if not is_init:
-                self.show()
+            self.show()
         else:
             flags = Qt.WindowType.Window
             if self.top_checkbox.isChecked():
@@ -286,13 +320,12 @@ class DailyScraper(QMainWindow):
 
             self.enforce_dark_titlebar(self.is_dark)
 
-            if not is_init:
-                self.showNormal()
-                self.show()
-                QApplication.processEvents()
+            self.showNormal()
+            self.show()
+            QApplication.processEvents()
 
-                if hasattr(self, "saved_geometry"):
-                    self.restoreGeometry(self.saved_geometry)
+            if hasattr(self, "saved_geometry"):
+                self.restoreGeometry(self.saved_geometry)
 
     def toggle_startup(self, checked):
         success = startup_manager.set_startup(checked)
@@ -364,6 +397,10 @@ class DailyScraper(QMainWindow):
                 self.roadmap_tab.refresh_data()
                 self.roadmap_tab.is_loaded = True
 
+    def on_zoom_changed(self, value):
+        new_size = round((value / 100.0) * 14)
+        self.apply_global_font_size(new_size)
+
     def update_background_opacity(self, value=None):
         if value is None:
             value = self.opacity_slider.value()
@@ -424,6 +461,29 @@ class DailyScraper(QMainWindow):
             event.accept()
         else:
             super().mouseMoveEvent(event)
+
+    def wheelEvent(self, event: QWheelEvent):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            app: QApplication = QApplication.instance()
+            current_size = app.font().pixelSize()
+
+            new_size = current_size
+            if delta > 0 and current_size < 24:
+                new_size += 1
+            elif delta < 0 and current_size > 10:
+                new_size -= 1
+
+            if new_size != current_size:
+                zoom_percent = int((new_size / 14.0) * 100)
+                self.zoom_spinbox.blockSignals(True)
+                self.zoom_spinbox.setValue(zoom_percent)
+                self.zoom_spinbox.blockSignals(False)
+                self.apply_global_font_size(new_size)
+
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
     def paintEvent(self, event):
         if getattr(self, "is_widget_mode", False):

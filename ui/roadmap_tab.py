@@ -1,5 +1,6 @@
 import json
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -243,7 +244,11 @@ class RoadmapCanvas(QWidget):
             title_text = f"{s['title']}{repeat_string}"
             display_text = title_text
 
-            font = QFont("Pretendard Variable", 10)
+            app: QApplication = QApplication.instance()
+            app_font_size = app.font().pixelSize()
+            target_size = max(1, int(app_font_size * (13 / 14)))
+
+            font = QFont("Pretendard Variable", target_size)
             fm = QFontMetrics(font)
             text_width = fm.horizontalAdvance(display_text) + 15
 
@@ -361,6 +366,7 @@ class RoadmapTab(QWidget):
         self.setup_ui()
         global_signals.schedule_updated.connect(self.refresh_data)
         global_signals.roadmap_group_updated.connect(self.refresh_data)
+        global_signals.font_size_changed.connect(self.on_font_changed)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -494,6 +500,10 @@ class RoadmapTab(QWidget):
 
         roadmap_schedules.sort(key=lambda x: (x["start_date"], x["end_date"]))
         self.canvas.update_data(year, groups, roadmap_schedules)
+
+    def on_font_changed(self):
+        if self.isVisible():
+            QTimer.singleShot(10, self.canvas.draw_bars)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
