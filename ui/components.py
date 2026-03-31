@@ -1,6 +1,7 @@
 import json
 import webbrowser
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QMenu,
     QDialog,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QRadioButton,
     QButtonGroup,
+    QScrollArea,
     QCheckBox,
     QComboBox,
     QSpinBox,
@@ -34,7 +36,15 @@ from PySide6.QtGui import (
     QEnterEvent,
     QContextMenuEvent,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QDate, QPoint
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QTimer,
+    QDate,
+    QPoint,
+    QPropertyAnimation,
+    QEasingCurve,
+)
 from core import db_manager
 from core.signals import global_signals
 from core.tw_utils import DEFAULT_COLORS, COLORS, tw, tw_sheet
@@ -112,15 +122,50 @@ class DoubleClickLineEdit(QLineEdit):
 
 
 class TitleLabel(QLabel):
-    def __init__(self, text, size=18):
-        super().__init__(text)
-        self.setStyleSheet(tw("font-bold", f"text-{size}", "mr-5"))
+    def __init__(self, text="", size=14, parent=None):
+        super().__init__(text, parent)
+        self.base_style = tw("font-bold", "mb-5")
+        self.font_size = size
+        self.update_font_size()
+        global_signals.font_size_changed.connect(self.update_font_size)
+
+    def update_font_size(self):
+        app: QApplication = QApplication.instance()
+        base_size = app.font().pixelSize()
+        target_size = int(base_size * (self.font_size / 10))
+        self.setStyleSheet(f"{self.base_style} font-size: {target_size}px;")
+
+
+class BoldLabel(QLabel):
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet(tw("font-bold", "mr-8"))
 
 
 class DescriptionLabel(QLabel):
-    def __init__(self, text):
-        super().__init__(text)
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
         self.setStyleSheet(tw("text-c77", "mb-10"))
+
+
+class EllipsisLabel(QLabel):
+    """영역을 벗어나면 자동으로 말줄임표(...) 처리를 해주는 라벨입니다."""
+
+    def __init__(self, text):
+        super().__init__()
+        self._original_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setStyleSheet(tw("bg-transparent", "border-none"))
+
+    def resizeEvent(self, event):
+        """위젯의 가로 크기가 변할 때마다 실행되어 글자를 알맞게 자릅니다."""
+        metrics = self.fontMetrics()
+        elided_text = metrics.elidedText(
+            self._original_text, Qt.TextElideMode.ElideRight, self.width() - 5
+        )
+
+        super().setText(elided_text)
+        super().resizeEvent(event)
 
 
 class EditableRowWidget(QWidget):
@@ -189,11 +234,10 @@ class ArticleItemWidget(QWidget):
         super().__init__()
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(tw("bg-transparent"))
+        self.setStyleSheet(tw("bg-transparent", "p-5"))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 8, 5, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         self.title_label = QLabel(f"{icon} {title}")
         self.title_label.setStyleSheet(tw("text-14", "bg-transparent"))
@@ -205,7 +249,235 @@ class ArticleItemWidget(QWidget):
         layout.addWidget(self.meta_label)
 
     def set_highligt(self, bg="bg-transparent"):
-        self.setStyleSheet(tw(bg))
+        self.setStyleSheet(tw(bg, "p-5"))
+
+
+class DashboardItemWidget(QWidget):
+    """대시보드 카드 내부에 들어가는 개별 항목 위젯"""
+
+    def __init__(self, text, use_ellipsis=False, is_completed=False):
+        super().__init__()
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            tw_sheet({"DashboardItemWidget": "border-bb border-black-5"})
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 8, 5, 8)
+
+        if use_ellipsis:
+            self.label = EllipsisLabel(text)
+        else:
+            self.label = QLabel(text)
+
+        if is_completed:
+            self.label.setStyleSheet(tw("text-gray"))
+
+        layout.addWidget(self.label)
+
+
+class DashboardCard(QFrame):
+    """대시보드에 들어갈 개별 정보 카드 위젯입니다."""
+
+    def __init__(self, title, btn_text, btn_callback):
+        super().__init__()
+        # 카드 느낌을 내기 위해 테두리와 배경색을 살짝 줍니다.
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet(
+            tw_sheet({"DashboardCard": "bg-c80-5 rounded-8 border-b border-c80-20"})
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(25, 25, 25, 25)
+
+        # 타이틀
+        self.title_label = TitleLabel(title)
+        layout.addWidget(self.title_label)
+
+        # 리스트 (정보가 표시될 영역)
+        self.items_container = QWidget()
+        self.items_container.setStyleSheet(tw("bg-transparent"))
+
+        self.items_layout = QVBoxLayout(self.items_container)
+        self.items_layout.setContentsMargins(0, 0, 0, 0)
+        self.items_layout.setSpacing(0)
+
+        layout.addWidget(self.items_container)
+        layout.addStretch(1)
+
+        self.detail_btn = StyledButton(btn_text, COLORS["c33"], COLORS["blue-500"])
+        self.detail_btn.setFixedHeight(40)
+        self.detail_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.detail_btn.clicked.connect(btn_callback)
+        layout.addWidget(self.detail_btn)
+
+    def add_item(self, text, use_ellipsis=False, is_completed=False):
+        item_widget = DashboardItemWidget(text, use_ellipsis, is_completed)
+        self.items_layout.addWidget(item_widget)
+
+    def clear_items(self):
+        while self.items_layout.count():
+            child = self.items_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+
+class TrendRow(QWidget):
+    """전광판의 개별 한 줄을 담당하며 좌/우 정렬을 처리하는 위젯입니다."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 12, 15, 12)  # 위아래 여백을 넉넉히 줍니다
+        layout.setSpacing(10)
+
+        self.left_label = QLabel()
+        self.left_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.right_label = QLabel()
+        self.right_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        layout.addWidget(self.left_label, 1)
+        layout.addWidget(self.right_label, 0)
+
+    def set_data(self, rank_text, keyword, description, traffic):
+        desc_text = f" - {description}" if description else ""
+        self.left_label.setText(f"{rank_text}{keyword}{desc_text}")
+        self.right_label.setText(traffic)
+
+    def set_style(self, mode):
+        if mode == "highlight":
+            self.setStyleSheet(
+                tw_sheet(
+                    {
+                        "TrendRow": "rounded-4 bg-red-600",
+                    }
+                )
+            )
+            self.left_label.setStyleSheet(tw("text-white", "text-16", "pl-15"))
+            self.right_label.setStyleSheet(tw("text-white", "text-16", "pr-20"))
+        else:
+            self.setStyleSheet(tw_sheet({"TrendRow": "border-none bg-transparent"}))
+            self.left_label.setStyleSheet(tw("text-c77", "pl-15"))
+            self.right_label.setStyleSheet(tw("text-c77", "pr-20"))
+
+
+class TrendTickerWidget(QFrame):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.trends_data = []
+        self.current_index = 0
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        # 내용물: 4개의 Row를 담는 컨테이너 (실제로는 3개만 보이고 1개는 대기열 역할)
+        self.content = QWidget()
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(5)
+
+        self.rows: list[TrendRow] = []
+        for _ in range(6):
+            row = TrendRow()
+            self.rows.append(row)
+            self.content_layout.addWidget(row)
+
+        self.scroll_area.setWidget(self.content)
+        main_layout.addWidget(self.scroll_area)
+
+        self.anim = QPropertyAnimation(self.scroll_area.verticalScrollBar(), b"value")
+        self.anim.setDuration(500)
+        self.anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.anim.finished.connect(self._on_animation_finished)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.start_slide)
+
+        global_signals.font_size_changed.connect(self.update_height)
+
+    def set_data(self, trends):
+        self.trends_data = trends
+        self.current_index = 0
+        if self.trends_data:
+            self._populate_rows()
+            self.timer.start(3000)
+            QTimer.singleShot(100, self.update_height)
+        else:
+            self.rows[2].set_data(
+                "🔥", "데이터 없음", "트렌드를 가져오지 못했습니다.", ""
+            )
+            self.rows[2].set_style("highlight")
+
+    def _get_trend(self, offset):
+        if not self.trends_data:
+            return None
+        idx = (self.current_index + offset) % len(self.trends_data)
+        return self.trends_data[idx]
+
+    def _populate_rows(self):
+        offsets = [-2, -1, 0, 1, 2, 3]
+        for i, offset in enumerate(offsets):
+            trend = self._get_trend(offset)
+            rank_str = "·  "
+            self.rows[i].set_data(
+                rank_str, trend["keyword"], trend["description"], trend["traffic"]
+            )
+
+        self.rows[0].set_style("dim")
+        self.rows[1].set_style("dim")
+        self.rows[2].set_style("highlight")
+        self.rows[3].set_style("dim")
+        self.rows[4].set_style("dim")
+        self.rows[5].set_style("dim")
+
+    def start_slide(self):
+        if not self.trends_data:
+            return
+
+        # 포커스 이동
+        self.rows[2].set_style("dim")
+        self.rows[3].set_style("highlight")
+
+        # 첫 번째 행의 높이 + 여백만큼 스크롤바를 아래로
+        slide_dist = self.rows[0].height() + self.content_layout.spacing()
+
+        self.anim.setStartValue(0)
+        self.anim.setEndValue(slide_dist)
+        self.anim.start()
+
+    def _on_animation_finished(self):
+        self.current_index = (self.current_index + 1) % len(self.trends_data)
+
+        # 밀려 올라간 데이터들을 다음 순서로 덮어씌움 (다시 Row 1이 중앙 데이터가 됨)
+        self._populate_rows()
+        self.scroll_area.verticalScrollBar().setValue(0)
+
+    def update_height(self):
+        if self.content_layout.count() >= 5:
+            h = sum(self.rows[i].sizeHint().height() for i in range(5))
+            h += self.content_layout.spacing() * 4
+            self.scroll_area.setFixedHeight(h)
 
 
 class ClickableColorLabel(QLabel):
@@ -455,7 +727,7 @@ class EventDialog(QDialog):
 
         # Title
         title_layout = QHBoxLayout()
-        title_layout.addWidget(TitleLabel("📌 이름", 14))
+        title_layout.addWidget(BoldLabel("📌 이름"))
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("일정 이름을 입력해주세요")
         self.title_input.setStyleSheet(tw("py-5"))
@@ -465,7 +737,7 @@ class EventDialog(QDialog):
 
         # Period
         date_layout = QHBoxLayout()
-        date_layout.addWidget(TitleLabel("📅 기간", 14))
+        date_layout.addWidget(BoldLabel("📅 기간"))
         self.start_date = CustomDateEdit(QDate.fromString(date_str, "yyyy. MM. dd"))
         date_layout.addWidget(self.start_date)
         date_layout.addWidget(QLabel("  ~ "))
@@ -476,7 +748,7 @@ class EventDialog(QDialog):
 
         # Repeat
         repeat_layout = QHBoxLayout()
-        repeat_layout.addWidget(TitleLabel("🔁 반복", 14))
+        repeat_layout.addWidget(BoldLabel("🔁 반복"))
         self.repeat_combo = QComboBox()
         self.repeat_combo.addItems(["반복 없음", "일", "주", "월", "연"])
         self.repeat_combo.setFixedWidth(100)
@@ -606,7 +878,7 @@ class EventDialog(QDialog):
 
         # Color Section
         color_layout = QHBoxLayout()
-        color_layout.addWidget(TitleLabel("🎨 색상", 14))
+        color_layout.addWidget(BoldLabel("🎨 색상"))
 
         # 미리 지정된 색 말고도 색을 선택할 수 있도록
         self.color_preview = ClickableColorLabel()
@@ -654,7 +926,7 @@ class EventDialog(QDialog):
         layout.addWidget(Separator())
 
         description_layout = QVBoxLayout()
-        description_layout.addWidget(TitleLabel("✏️ 설명", 14))
+        description_layout.addWidget(BoldLabel("✏️ 설명"))
         self.description_text = QTextEdit()
         self.description_text.setFixedHeight(180)
         description_layout.addWidget(self.description_text)
@@ -662,7 +934,7 @@ class EventDialog(QDialog):
 
         # Road Map
         self.is_roadmap_cb = QCheckBox("⭐ 로드맵에 추가합니다.")
-        self.is_roadmap_cb.setStyleSheet(tw("mr-10"))
+        self.is_roadmap_cb.setStyleSheet(tw("mt-5"))
         layout.addWidget(self.is_roadmap_cb)
 
         group_layout = QHBoxLayout()
@@ -685,7 +957,7 @@ class EventDialog(QDialog):
 
         # Is Completed?
         self.is_completed_cb = QCheckBox("✅ 이 일정을 완료했습니다.")
-        self.is_completed_cb.setStyleSheet(tw("mt-5"))
+        self.is_completed_cb.setStyleSheet(tw("my-8"))
         layout.addWidget(self.is_completed_cb)
         layout.addStretch()
 

@@ -5,12 +5,12 @@ from email.utils import parsedate_to_datetime
 from core.network import global_session as session
 
 
-def get_news_by_query(query_string, limit=15):
+def get_news_by_query(query_string, limit=30):
 
     if not query_string.strip():
         return []
 
-    encoded_query = urllib.parse.quote(f"{query_string} when:30d")
+    encoded_query = urllib.parse.quote(query_string)
     rss_url = (
         f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
     )
@@ -53,7 +53,7 @@ def get_news_by_query(query_string, limit=15):
                 "title": entry.title,
                 "link": entry.link,
                 "published_dt": pub_dt,
-                "published_str": pub_dt.strftime("%Y-%m-%d"),
+                "published_str": pub_dt.strftime("%Y-%m-%d %H:%M"),
                 "source": source_title,
             }
         )
@@ -62,7 +62,7 @@ def get_news_by_query(query_string, limit=15):
     return news_list[:limit]
 
 
-def get_news_by_or_query(selected_groups, limit=15):
+def get_news_by_or_query(selected_groups, limit=30):
     if not selected_groups:
         return []
 
@@ -91,3 +91,48 @@ def get_news_by_or_query(selected_groups, limit=15):
 
     all_news.sort(key=lambda x: x["published_dt"], reverse=True)
     return all_news[:limit]
+
+
+def get_google_trends(limit=None):
+    rss_url = "https://trends.google.co.kr/trending/rss?geo=KR"
+    try:
+        response = session.get(rss_url, timeout=10)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+    except Exception as e:
+        print(f"구글 트렌드 RSS를 가져오는 중 오류 발생: {e}")
+        return []
+
+    trends_list = []
+
+    for entry in feed.entries:
+        try:
+            keyword = getattr(entry, "title", "알 수 없음")
+            traffic = getattr(entry, "ht_approx_traffic", "검색량 알 수 없음")
+            description = getattr(entry, "ht_news_item_title", "")
+            published_raw = getattr(entry, "published", "")
+
+            if published_raw:
+                pub_dt = parsedate_to_datetime(published_raw)
+                pub_str = pub_dt.strftime("%Y-%m-%d %H:%M")
+            else:
+                pub_dt = None
+                pub_str = "시간 알 수 없음"
+
+            trends_list.append(
+                {
+                    "keyword": keyword,
+                    "traffic": traffic,
+                    "description": description,
+                    "published_dt": pub_dt,
+                    "published_str": pub_str,
+                    "link": getattr(entry, "link", ""),
+                }
+            )
+
+        except Exception as inner_e:
+            fallback_title = getattr(entry, "title", "알수없음")
+            print(f"트렌드 항목 파싱 중 오류 (키워드: {fallback_title}): {inner_e}")
+            continue
+
+    return trends_list[:limit] if limit else trends_list

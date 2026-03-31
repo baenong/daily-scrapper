@@ -88,7 +88,7 @@ class HelpDialog(QDialog):
                     }}
                     div {{
                         margin-top: 25px;
-                        font-size: 14px;
+                        font-size: 1em;
                     }}
                     img {{
                         margin-top: 5px;

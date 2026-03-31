@@ -1,93 +1,16 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QListWidget,
-    QListWidgetItem,
-    QFrame,
-    QSizePolicy,
-    QLabel,
     QHBoxLayout,
 )
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import QDate
 from datetime import datetime
 
 # 공통 부품 및 코어 모듈 불러오기
-from ui.components import TitleLabel, StyledButton
+from ui.components import TitleLabel, DashboardCard, TrendTickerWidget
 from ui.schedule_tab import get_instances
 from core import db_manager, news_scraper, law_scraper, policy_scraper
 from core.worker import run_async
-from core.tw_utils import tw, tw_sheet, COLORS
-
-
-class EllipsisLabel(QLabel):
-    """영역을 벗어나면 자동으로 말줄임표(...) 처리를 해주는 라벨입니다."""
-
-    def __init__(self, text):
-        super().__init__()
-        self._original_text = text
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.setStyleSheet(tw("bg-transparent", "border-none"))
-
-    def resizeEvent(self, event):
-        """위젯의 가로 크기가 변할 때마다 실행되어 글자를 알맞게 자릅니다."""
-        metrics = self.fontMetrics()
-        elided_text = metrics.elidedText(
-            self._original_text, Qt.TextElideMode.ElideRight, self.width() - 5
-        )
-
-        super().setText(elided_text)
-        super().resizeEvent(event)
-
-
-class DashboardCard(QFrame):
-    """대시보드에 들어갈 개별 정보 카드 위젯입니다."""
-
-    def __init__(self, title, btn_text, btn_callback):
-        super().__init__()
-        # 카드 느낌을 내기 위해 테두리와 배경색을 살짝 줍니다.
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            tw_sheet({"DashboardCard": "bg-c80-5 rounded-8 border-b border-c80-20"})
-        )
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(20)
-        layout.setContentsMargins(25, 25, 25, 25)
-
-        # 타이틀
-        self.title_label = TitleLabel(title)
-        layout.addWidget(self.title_label)
-
-        # 리스트 (정보가 표시될 영역)
-        self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet(
-            tw_sheet(
-                {
-                    "QListWidget": "border-none bg-transparent",
-                    "QListWidget::item": "py-8 border-bb border-black-5",
-                }
-            )
-        )
-
-        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.list_widget.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        layout.addWidget(self.list_widget)
-
-        self.detail_btn = StyledButton(btn_text, COLORS["c33"], COLORS["blue-500"])
-        self.detail_btn.setFixedHeight(40)
-        self.detail_btn.clicked.connect(btn_callback)
-        layout.addWidget(self.detail_btn)
-
-    def add_item(self, text, use_ellipsis=False):
-        item = QListWidgetItem(self.list_widget)
-
-        if use_ellipsis:
-            label = EllipsisLabel(text)
-            self.list_widget.setItemWidget(item, label)
-        else:
-            item.setText(text)
 
 
 class DashboardTab(QWidget):
@@ -103,14 +26,19 @@ class DashboardTab(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setContentsMargins(100, 40, 100, 40)
 
         welcome_label = TitleLabel(
             f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요."
         )
-        welcome_label.setStyleSheet(tw("text-20", "font-bold", "mb-20"))
-        layout.addStretch(1)
+        layout.addStretch(5)
         layout.addWidget(welcome_label)
+
+        self.trend_ticker = TrendTickerWidget()
+        layout.addStretch(1)
+        layout.addWidget(TitleLabel("  🔥 구글 최신 트렌드(한국)", 12))
+        layout.addWidget(self.trend_ticker)
+        layout.addStretch(1)
 
         cards_layout = QHBoxLayout()
         cards_layout.setSpacing(15)
@@ -131,24 +59,23 @@ class DashboardTab(QWidget):
             "🚨 오늘 시행 법령", "법령 탭으로 이동 ➔", lambda: self.go_to_tab(2)
         )
 
-        cards_layout.addWidget(self.todo_card)
-        cards_layout.addWidget(self.news_card)
-        cards_layout.addWidget(self.policy_card)
-        cards_layout.addWidget(self.law_card)
+        cards_layout.addWidget(self.todo_card, 1)
+        cards_layout.addWidget(self.news_card, 1)
+        cards_layout.addWidget(self.policy_card, 1)
+        cards_layout.addWidget(self.law_card, 1)
 
         layout.addLayout(cards_layout)
-        layout.addStretch(1)
+        layout.addStretch(5)
 
     def load_dashboard_data(self):
-        """데이터 로딩을 시작하고 UI를 로딩 상태로 변경합니다."""
         if getattr(self, "is_fetching", False):
             return
         self.is_fetching = True
 
-        self.todo_card.list_widget.clear()
-        self.news_card.list_widget.clear()
-        self.policy_card.list_widget.clear()
-        self.law_card.list_widget.clear()
+        self.todo_card.clear_items()
+        self.news_card.clear_items()
+        self.policy_card.clear_items()
+        self.law_card.clear_items()
 
         self.todo_card.add_item("⏳ 데이터 불러오는 중...")
         self.news_card.add_item("⏳ 데이터 불러오는 중...")
@@ -159,19 +86,14 @@ class DashboardTab(QWidget):
         run_async(
             self._fetch_data_in_background, self._on_data_loaded, self._on_data_error
         )
-        # worker = AsyncTask(self._fetch_data_in_background)
-        # worker.signals.result_ready.connect(self._on_data_loaded)
-        # worker.signals.error_occurred.connect(self._on_data_error)
-
-        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_data_in_background(self):
-        """이 함수는 UI를 건드리지 않고 오직 데이터만 수집하여 딕셔너리로 반환합니다."""
         result = {
             "todos": [],
             "news": [],
             "policy": [],
             "laws": [],
+            "trends": [],
             "has_news_kw": False,
             "has_law_kw": False,
         }
@@ -233,12 +155,19 @@ class DashboardTab(QWidget):
 
             result["laws"] = list(set(today_laws))
 
+        # 5. 트렌드
+        try:
+            result["trends"] = news_scraper.get_google_trends()
+        except Exception:
+            pass
+
         return result
 
     def _on_data_loaded(self, data):
         """백그라운드 작업이 끝나면 신호를 받아 UI를 업데이트합니다."""
         # 1. 일정 업데이트
-        self.todo_card.list_widget.clear()
+        # self.todo_card.list_widget.clear()
+        self.todo_card.clear_items()
         self.is_fetching = False
 
         if not data["todos"]:
@@ -247,13 +176,13 @@ class DashboardTab(QWidget):
             for t in data["todos"][:5]:
                 is_comp = t.get("is_completed", False)
                 prefix = "✅ " if is_comp else "✏️ "
-                item = QListWidgetItem(prefix + t["title"])
-                if is_comp:
-                    item.setForeground(Qt.GlobalColor.gray)
-                self.todo_card.list_widget.addItem(item)
+                self.todo_card.add_item(
+                    text=prefix + t["title"], use_ellipsis=True, is_completed=is_comp
+                )
 
         # 2. 뉴스 업데이트
-        self.news_card.list_widget.clear()
+        # self.news_card.list_widget.clear()
+        self.news_card.clear_items()
         if not data["news"] and not data["has_news_kw"]:
             self.news_card.add_item("설정된 뉴스 키워드가 없습니다.")
         elif not data["news"]:
@@ -263,7 +192,8 @@ class DashboardTab(QWidget):
                 self.news_card.add_item(f"• {news['title']}", use_ellipsis=True)
 
         # 3. 정책 브리핑 업데이트
-        self.policy_card.list_widget.clear()
+        # self.policy_card.list_widget.clear()
+        self.policy_card.clear_items()
         if not data["policy"]:
             self.policy_card.add_item("신규 정책 브리핑이 없습니다.")
         else:
@@ -271,7 +201,8 @@ class DashboardTab(QWidget):
                 self.policy_card.add_item(f"• {policy['title']}", use_ellipsis=True)
 
         # 4. 법령 업데이트
-        self.law_card.list_widget.clear()
+        # self.law_card.list_widget.clear()
+        self.law_card.clear_items()
         if not data["laws"] and not data["has_law_kw"]:
             self.law_card.add_item("설정된 법령 키워드가 없습니다.")
         elif not data["laws"]:
@@ -280,14 +211,18 @@ class DashboardTab(QWidget):
             for name in data["laws"][:5]:
                 self.law_card.add_item(f"• {name}", use_ellipsis=True)
 
+        # 5. 트렌드
+        if "trends" in data and data["trends"]:
+            self.trend_ticker.set_data(data["trends"])
+
     def _on_data_error(self, error_msg):
         """데이터 로딩 중 에러가 발생했을 때의 처리입니다."""
         self.is_fetching = False
 
-        self.todo_card.list_widget.clear()
-        self.news_card.list_widget.clear()
-        self.policy_card.list_widget.clear()
-        self.law_card.list_widget.clear()
+        self.todo_card.clear_items()
+        self.news_card.clear_items()
+        self.policy_card.clear_items()
+        self.law_card.clear_items()
 
         self.todo_card.add_item("데이터 로드 실패")
         self.news_card.add_item("데이터 로드 실패")

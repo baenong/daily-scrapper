@@ -13,6 +13,7 @@ COLORS = {
     "red-300": "#FF968A",
     "red-400": "#FFC0CC",
     "red-500": "#F44336",
+    "red-600": "#FB5852",
     "red-700": "#D32F2F",
     "green-300": "#B2FBA5",
     "green-500": "#4CAF50",
@@ -54,6 +55,19 @@ STYLES = {
     "line-through": "text-decoration: line-through;",
     "no-underline": "text-decoration: none;",
 }
+
+
+def px_to_em(px_value: str, base_size: float = 14.0, slice: int = 0) -> str:
+    val_str = px_value[slice:] if slice > 0 else px_value
+
+    if not val_str.strip():
+        return "0em"
+
+    try:
+        val = float(val_str)
+        return f"{(val / base_size):.3f}em"
+    except ValueError:
+        return "0em"
 
 
 def hex_to_rgba(hex_code, opacity_pct):
@@ -108,8 +122,7 @@ def tw(*classes: str):
         elif c.startswith("text-"):
             val = c[5:]
             if val.isdigit():
-                em_val = int(val) / 14.0
-                style.append(f"font-size: {em_val:.3f}em;")
+                style.append(f"font-size: {px_to_em(val)};")
             else:
                 parsed = parse_color(c, "text-", "color")
                 if parsed:
@@ -195,7 +208,8 @@ def tw(*classes: str):
         elif c.startswith("px-"):
             style.append(f"padding-left: {c[3:]}px; padding-right: {c[3:]}px;")
         elif c.startswith("py-"):
-            style.append(f"padding-top: {c[3:]}px; padding-bottom: {c[3:]}px;")
+            em_val = px_to_em(c, slice=3)
+            style.append(f"padding-top: {em_val}; padding-bottom: {em_val};")
         elif c.startswith("pt-"):
             style.append(f"padding-top: {c[3:]}px;")
         elif c.startswith("pr-"):
@@ -205,13 +219,14 @@ def tw(*classes: str):
         elif c.startswith("pl-"):
             style.append(f"padding-left: {c[3:]}px;")
         elif c.startswith("p-"):
-            style.append(f"padding: {c[2:]}px;")
+            style.append(f"padding: {px_to_em(c, slice=2)};")
 
         # Margin (m-, mx-, my-, mt-, mb-, ml-, mr-)
         elif c.startswith("mx-"):
             style.append(f"margin-left: {c[3:]}px; margin-right: {c[3:]}px;")
         elif c.startswith("my-"):
-            style.append(f"margin-top: {c[3:]}px; margin-bottom: {c[3:]}px;")
+            em_val = px_to_em(c, slice=3)
+            style.append(f"margin-top: {em_val}; margin-bottom: {em_val};")
         elif c.startswith("mt-"):
             style.append(f"margin-top: {c[3:]}px;")
         elif c.startswith("mr-"):
@@ -221,7 +236,7 @@ def tw(*classes: str):
         elif c.startswith("ml-"):
             style.append(f"margin-left: {c[3:]}px;")
         elif c.startswith("m-"):
-            style.append(f"margin: {c[2:]}px;")
+            style.append(f"margin: {px_to_em(c, slice=2)}px;")
 
         # Width and Height
         elif c.startswith("h-"):

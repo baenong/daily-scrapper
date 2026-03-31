@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate, Signal, QTimer, QThreadPool
 from PySide6.QtGui import QColor, QMouseEvent, QFont, QFontMetrics
 from ui.components import (
-    TitleLabel,
+    BoldLabel,
     StyledButton,
     ClickableEventLabel,
     EventDialog,
@@ -269,7 +269,7 @@ class DailyEventsDialog(QDialog):
         self.setFixedSize(320, 500)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(TitleLabel(f"{date_obj.toString('yy. MM. dd')}"))
+        layout.addWidget(BoldLabel(f"{date_obj.toString('yy. MM. dd')}"))
 
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(

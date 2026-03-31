@@ -1,6 +1,5 @@
 import sys
 import ctypes
-import keyboard
 from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,10 +38,6 @@ from ui.roadmap_tab import RoadmapTab
 from ui.help_dialog import HelpDialog
 
 
-# class HotKeySignal(QObject):
-# activated = Signal()
-
-
 class DailyScraper(QMainWindow):
 
     def __init__(self):
@@ -61,6 +56,7 @@ class DailyScraper(QMainWindow):
             self.restoreGeometry(self.settings["window_geometry"])
 
         self.is_dark = self.settings.get("dark_mode", True)
+        self.current_zoom = self.settings.get("zoom_level", 100)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self.main_widget = QWidget()
@@ -100,6 +96,7 @@ class DailyScraper(QMainWindow):
         # Qt Rendering Bug Fix
         self.setWindowOpacity(0.0)
 
+        self.apply_global_font_size(self.current_zoom)
         self.toggle_widget_mode()
         self.toggle_widget_mode()
         self.toggle_theme(animate=False)
@@ -109,11 +106,6 @@ class DailyScraper(QMainWindow):
 
         self.hide()
         self.setWindowOpacity(1.0)
-
-        # 글로벌 단축키
-        # self.hotkey_signal = HotKeySignal()
-        # self.hotkey_signal.activated.connect(self.bring_to_front)
-        # keyboard.add_hotkey("ctrl+shift+space", self.hotkey_signal.activated.emit)
 
         # 시스템 트레이
         self.setup_tray_icon()
@@ -143,14 +135,16 @@ class DailyScraper(QMainWindow):
         self.zoom_spinbox = QSpinBox()
         self.zoom_spinbox.setRange(70, 175)
         self.zoom_spinbox.setSingleStep(5)
-        self.zoom_spinbox.setValue(100)
+        self.zoom_spinbox.blockSignals(True)
+        self.zoom_spinbox.setValue(self.current_zoom)
+        self.zoom_spinbox.blockSignals(False)
         self.zoom_spinbox.setSuffix("%")
         self.zoom_spinbox.setMinimumWidth(60)
         self.zoom_spinbox.setCursor(Qt.CursorShape.PointingHandCursor)
         self.zoom_spinbox.valueChanged.connect(self.on_zoom_changed)
 
         self.top_checkbox = QCheckBox("📌 맨 앞 고정")
-        self.top_checkbox.setStyleSheet(tw("text-c77", "mr-5"))
+        self.top_checkbox.setStyleSheet(tw("text-c77", "mx-5"))
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
         self.top_checkbox.toggled.connect(self.toggle_always_on_top)
 
@@ -177,13 +171,13 @@ class DailyScraper(QMainWindow):
         bottom_layout.addWidget(self.theme_checkbox)
         bottom_layout.addWidget(self.widget_btn)
         bottom_layout.addStretch()
-        bottom_layout.addWidget(self.zoom_label)
-        bottom_layout.addWidget(self.zoom_spinbox)
         bottom_layout.addWidget(self.top_checkbox)
         bottom_layout.addWidget(self.opacity_label)
         bottom_layout.addWidget(self.opacity_slider)
         bottom_layout.addWidget(self.startup_checkbox)
         bottom_layout.addWidget(self.help_btn)
+        bottom_layout.addWidget(self.zoom_label)
+        bottom_layout.addWidget(self.zoom_spinbox)
 
         self.opacity_label.hide()
         self.opacity_slider.hide()
@@ -230,15 +224,21 @@ class DailyScraper(QMainWindow):
         app: QApplication = QApplication.instance()
         setup_theme(app, is_dark)
 
-    def apply_global_font_size(self, new_size):
+    def apply_global_font_size(self, percent):
+
+        self.current_zoom = percent
+
+        base_size = 14
+        step_diff = int((percent - 100) / 5)
+        new_pixel_size = base_size + step_diff
+
         app: QApplication = QApplication.instance()
         font = app.font()
 
-        if font.pixelSize() != new_size:
-            font.setPixelSize(new_size)
+        if font.pixelSize() != new_pixel_size:
+            font.setPixelSize(new_pixel_size)
             app.setFont(font)
             app.setStyleSheet(get_global_qss(self.is_dark))
-
             global_signals.font_size_changed.emit()
 
     def enforce_dark_titlebar(self, is_dark: bool):
@@ -398,8 +398,7 @@ class DailyScraper(QMainWindow):
                 self.roadmap_tab.is_loaded = True
 
     def on_zoom_changed(self, value):
-        new_size = round((value / 100.0) * 14)
-        self.apply_global_font_size(new_size)
+        self.apply_global_font_size(value)
 
     def update_background_opacity(self, value=None):
         if value is None:
@@ -465,20 +464,18 @@ class DailyScraper(QMainWindow):
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
-            app: QApplication = QApplication.instance()
-            current_size = app.font().pixelSize()
 
-            new_size = current_size
-            if delta > 0 and current_size < 24:
-                new_size += 1
-            elif delta < 0 and current_size > 10:
-                new_size -= 1
+            new_size = self.current_zoom
+            if delta > 0 and self.current_zoom < 175:
+                new_size += 5
+            elif delta < 0 and self.current_zoom > 70:
+                new_size -= 5
 
-            if new_size != current_size:
-                zoom_percent = int((new_size / 14.0) * 100)
+            if new_size != self.current_zoom:
                 self.zoom_spinbox.blockSignals(True)
-                self.zoom_spinbox.setValue(zoom_percent)
+                self.zoom_spinbox.setValue(new_size)
                 self.zoom_spinbox.blockSignals(False)
+
                 self.apply_global_font_size(new_size)
 
             event.accept()
@@ -516,12 +513,6 @@ class DailyScraper(QMainWindow):
                 )
             return
 
-        # 단축키 등록 해제
-        try:
-            keyboard.unhook_all()
-        except:
-            pass
-
         if hasattr(self, "tray_icon"):
             self.tray_icon.hide()
 
@@ -532,10 +523,11 @@ class DailyScraper(QMainWindow):
             "dark_mode": self.settings.get("dark_mode", True),
             "news_limit": self.settings.get("news_limit", 15),
             "news_cond_and": self.settings.get("news_cond_and", True),
+            "zoom_level": self.current_zoom,
         }
         SettingsManager.save(settings_to_save)
 
         event.accept()
-        app = QApplication.instance()
+        app: QApplication = QApplication.instance()
         if app:
             app.quit()

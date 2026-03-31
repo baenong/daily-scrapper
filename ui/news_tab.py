@@ -12,13 +12,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
 )
-from PySide6.QtCore import Qt, QUrl, QThreadPool
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from datetime import datetime, timezone
 
 from core import news_scraper, db_manager
-from core.worker import AsyncTask, run_async
+from core.worker import run_async
 from core.tw_utils import COLORS, tw, tw_sheet
+from core.signals import global_signals
 from ui.components import (
     TitleLabel,
     DescriptionLabel,
@@ -37,6 +38,7 @@ class NewsTab(QWidget):
         self.settings = settings
         self.is_loaded = False
         self.setup_ui()
+        global_signals.font_size_changed.connect(self.update_list_item_sizes)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -77,7 +79,7 @@ class NewsTab(QWidget):
 
         self.news_limit = QSpinBox()
         self.news_limit.setRange(1, 50)
-        self.news_limit.setValue(self.settings.get("news_limit", 15))
+        self.news_limit.setValue(self.settings.get("news_limit", 30))
         self.news_limit.valueChanged.connect(self.change_news_limit)
         self.news_limit.setFixedWidth(65)
 
@@ -193,16 +195,6 @@ class NewsTab(QWidget):
             is_and_cond,
             self.news_limit.value(),
         )
-        # worker = AsyncTask(
-        #     self._fetch_news_in_background,
-        #     selected_groups,
-        #     is_and_cond,
-        #     self.news_limit.value(),
-        # )
-        # worker.signals.result_ready.connect(self._on_news_loaded)
-        # worker.signals.error_occurred.connect(self._on_news_error)
-
-        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_news_in_background(self, selected_groups, is_and_cond, limit):
         if is_and_cond:
@@ -264,6 +256,18 @@ class NewsTab(QWidget):
                 item.setHidden(False)
             else:
                 item.setHidden(True)
+
+    def update_list_item_sizes(self):
+        if not hasattr(self, "news_list_view") or self.news_list_view.count() == 0:
+            return
+
+        for i in range(self.news_list_view.count()):
+            item = self.news_list_view.item(i)
+            widget = self.news_list_view.itemWidget(item)
+
+            if widget:
+                new_size = widget.sizeHint()
+                item.setSizeHint(new_size)
 
     def change_news_limit(self):
         self.settings["news_limit"] = self.news_limit.value()

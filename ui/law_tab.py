@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
 )
-from PySide6.QtCore import Qt, QUrl, QThreadPool
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from datetime import datetime
 
@@ -16,7 +16,7 @@ from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRo
 from core import law_scraper, db_manager
 from core.tw_utils import COLORS
 from core.signals import global_signals
-from core.worker import AsyncTask, run_async
+from core.worker import run_async
 
 
 class LawTab(QWidget):

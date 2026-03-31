@@ -10,13 +10,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
 )
-from PySide6.QtCore import Qt, QUrl, QThreadPool
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from datetime import datetime, timezone
 
 from core import db_manager, policy_scraper
-from core.worker import AsyncTask, run_async
+from core.worker import run_async
 from core.tw_utils import COLORS, tw, tw_sheet
+from core.signals import global_signals
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, ArticleItemWidget
 
 ROLE_LINK = Qt.ItemDataRole.UserRole + 1
@@ -31,6 +32,7 @@ class PolicyTab(QWidget):
         self.is_loaded = False
         self.departments = db_manager.load_departments()
         self.department_checkboxes = []
+        global_signals.font_size_changed.connect(self.update_list_item_sizes)
         self.setup_ui()
 
     def setup_ui(self):
@@ -151,11 +153,6 @@ class PolicyTab(QWidget):
             self._on_policy_error,
             selected_urls,
         )
-        # worker = AsyncTask(self._fetch_policy_in_background, selected_urls)
-        # worker.signals.result_ready.connect(self._on_policy_loaded)
-        # worker.signals.error_occurred.connect(self._on_policy_error)
-
-        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_policy_in_background(self, rss_urls):
         return policy_scraper.get_policy_briefings(rss_urls, limit=50)
@@ -221,6 +218,18 @@ class PolicyTab(QWidget):
                 item.setHidden(False)
             else:
                 item.setHidden(True)
+
+    def update_list_item_sizes(self):
+        if not hasattr(self, "policy_list_view") or self.policy_list_view.count() == 0:
+            return
+
+        for i in range(self.policy_list_view.count()):
+            item = self.policy_list_view.item(i)
+            widget = self.policy_list_view.itemWidget(item)
+
+            if widget:
+                new_size = widget.sizeHint()
+                item.setSizeHint(new_size)
 
     def open_link(self, item):
         url = item.data(ROLE_LINK)
