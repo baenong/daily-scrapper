@@ -294,6 +294,12 @@ def delete_schedule(schedule_id):
             conn.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
 
 
+def delete_non_roadmap_schedules():
+    with closing(get_connection()) as conn:
+        with conn:
+            conn.execute("DELETE FROM schedules WHERE is_roadmap = 0")
+
+
 def get_schedules():
     with closing(get_connection()) as conn:
         rows = conn.execute(

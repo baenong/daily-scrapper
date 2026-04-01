@@ -6,6 +6,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QScrollArea,
     QComboBox,
+    QMessageBox,
+    QDialog,
+    QTextBrowser,
 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
@@ -19,6 +22,190 @@ from ui.components import (
     ClickableEventLabel,
     GroupManagerDialog,
 )
+
+
+class HandoverReportDialog(QDialog):
+    def __init__(self, year, groups, schedules, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"📄 {year}년도 업무 인수인계서")
+        self.resize(800, 600)
+        layout = QVBoxLayout(self)
+
+        # 텍스트와 HTML을 예쁘게 보여주는 브라우저 위젯
+        self.browser = QTextBrowser()
+        self.browser.setStyleSheet(tw("bg-white", "text-black", "p-10", "text-14"))
+        layout.addWidget(self.browser)
+
+        # HTML 기반의 인수인계서 생성 및 렌더링
+        html = self.build_html(year, groups, schedules)
+        self.browser.setHtml(html)
+
+        btn_layout = QHBoxLayout()
+        self.copy_btn = StyledButton("📋 클립보드에 전체 복사", COLORS["blue-500"])
+        self.copy_btn.clicked.connect(self.copy_to_clipboard)
+
+        self.close_btn = StyledButton("닫기", "transparent", COLORS["c77"])
+        self.close_btn.clicked.connect(self.accept)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.copy_btn)
+        btn_layout.addWidget(self.close_btn)
+        layout.addLayout(btn_layout)
+
+    def build_html(self, year, groups, schedules):
+        # 1. 데이터를 그룹별로 분류
+        grouped = {g["id"]: [] for g in groups}
+        grouped[None] = []
+
+        for s in schedules:
+            g_id = s.get("group_id")
+            try:
+                g_id = int(g_id) if g_id is not None else None
+            except:
+                g_id = None
+            if g_id not in grouped:
+                g_id = None
+            grouped[g_id].append(s)
+
+        # 2. HTML 문서 조립 시작
+        html = f"""
+        <div style='font-family: "Pretendard", "Malgun Gothic", sans-serif;'>
+            <h1 style='text-align: center; color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px;'>
+                {year}년도 연간 업무 인수인계서
+            </h1>
+        """
+
+        # 3. 그룹별 데이터 출력
+        for g in groups:
+            g_id = g["id"]
+            if not grouped[g_id]:
+                continue
+
+            html += (
+                f"<h2 style='color: #2980b9; margin-top: 30px;'>📂 {g['name']}</h2><ul>"
+            )
+            for s in grouped[g_id]:
+                html += self.format_schedule(s)
+            html += "</ul>"
+
+        # 미지정 그룹 출력
+        if grouped[None]:
+            html += "<h2 style='color: #7f8c8d; margin-top: 30px;'>📂 미지정 그룹 (기타 업무)</h2><ul>"
+            for s in grouped[None]:
+                html += self.format_schedule(s)
+            html += "</ul>"
+
+        html += "</div>"
+        return html
+
+    def format_schedule(self, s):
+        title = s["title"]
+
+        # 1. 시작일과 종료일 포맷팅 (같으면 하나만 출력)
+        start_d = s["start_date"]
+        end_d = s["end_date"]
+        if start_d == end_d:
+            dates = start_d
+        else:
+            dates = f"{start_d} ~ {end_d}"
+
+        # 2. 반복 일정 상세 표기 (로드맵 간트 차트와 동일한 로직 적용)
+        rtype = s.get("repeat_type", "none")
+        rep_str = ""
+        if rtype != "none":
+            rule_str = s.get("repeat_rule", "")
+            rule = {}
+            if rule_str:
+                try:
+                    rule = json.loads(rule_str)
+                except json.JSONDecodeError:
+                    pass
+
+            interval = rule.get("interval", 1)
+            label_base = ""
+
+            if interval == 1:
+                if rtype == "daily":
+                    label_base = "매일"
+                elif rtype == "weekly":
+                    label_base = "매주"
+                elif rtype == "monthly":
+                    label_base = "매월"
+                elif rtype == "yearly":
+                    label_base = "매년"
+            else:
+                if rtype == "daily":
+                    label_base = f"{interval}일마다"
+                elif rtype == "weekly":
+                    label_base = f"{interval}주마다"
+                elif rtype == "monthly":
+                    label_base = f"{interval}개월마다"
+                elif rtype == "yearly":
+                    label_base = f"{interval}년마다"
+
+            detail_label = ""
+            if rtype == "weekly":
+                days_map = ["월", "화", "수", "목", "금", "토", "일"]
+                days = rule.get("days", [])
+                if days:
+                    detail_label = " " + ",".join([days_map[d] for d in days])
+            elif rtype == "monthly":
+                mode = rule.get("mode", "date")
+                if mode == "date":
+                    detail_label = f" {rule.get('date', 1)}일"
+                else:
+                    nth_map = {1: "첫째", 2: "둘째", 3: "셋째", 4: "넷째", -1: "마지막"}
+                    days_map = ["월", "화", "수", "목", "금", "토", "일"]
+                    nth = rule.get("nth", 1)
+                    day_idx = rule.get("day", 0)
+                    detail_label = f" {nth_map.get(nth, '')} {days_map[day_idx]}"
+            elif rtype == "yearly":
+                detail_label = f" {rule.get('month', 1)}.{rule.get('date', 1)}"
+
+            if rule.get("weekday_only"):
+                detail_label += "(평일)"
+
+            repeat_end_str = s.get("repeat_end", "")
+            if repeat_end_str:
+                repeat_end_date = QDate.fromString(repeat_end_str, "yyyy-MM-dd")
+                repeat_end = f" ~{repeat_end_date.toString('yy.MM.dd')}"
+            else:
+                repeat_end = " 반복"
+
+            full_rep_text = f"({label_base}{detail_label}{repeat_end})"
+            # 폰트 크기를 약간 키우고 눈에 잘 띄는 오렌지색 유지
+            rep_str = f" <span style='color: #e67e22; font-size: 15px;'><b>{full_rep_text}</b></span>"
+
+        # 3. 설명(메모) 박스 디자인 개선 및 폰트 크기 확대
+        desc = s.get("description", "").strip()
+        desc_html = ""
+        if desc:
+            desc = desc.replace("\n", "<br>")
+            desc_html = f"""
+            <div style='margin-top: 8px; margin-bottom: 15px; padding: 12px; 
+                        background-color: #f8f9fa; border-left: 4px solid #ced4da; 
+                        color: #212529; font-size: 14.5px; line-height: 1.5;'>
+                {desc}
+            </div>
+            """
+
+        # 4. 제목 폰트 크기(16px) 및 날짜 폰트 크기 조절
+        return f"""
+                <li style='margin-bottom: { '5px' if desc_html else '15px' }; line-height: 1.6;'>
+                    <span style='font-size: 16px;'><b>{title}</b></span>
+                    <span style='color: #6c757d; font-size: 14px;'> [{dates}]</span>{rep_str}{desc_html}
+                </li>
+                """
+
+    def copy_to_clipboard(self):
+        app: QApplication = QApplication.instance()
+        # HTML 렌더링 결과를 순수 텍스트(들여쓰기 포함)로 변환하여 복사
+        app.clipboard().setText(self.browser.toPlainText())
+        QMessageBox.information(
+            self,
+            "복사 완료",
+            "인수인계서 내용이 클립보드에 복사되었습니다.\n아래아한글(HWP)이나 워드, 메모장 등에 바로 붙여넣기 하세요.",
+        )
 
 
 class RoadmapCanvas(QWidget):
@@ -383,9 +570,21 @@ class RoadmapTab(QWidget):
         self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", COLORS["blue-500"])
         self.group_mgr_btn.clicked.connect(self.open_group_manager)
 
-        top_layout.addStretch()
+        self.report_btn = StyledButton("📄 인수인계서 작성", COLORS["green-500"])
+        self.report_btn.setToolTip("현재 연도의 로드맵을 문서 형태로 정리합니다.")
+        self.report_btn.clicked.connect(self.generate_handover_report)
+
+        self.cleanup_btn = StyledButton("🧹 인수인계 정리", COLORS["red-600"])
+        self.cleanup_btn.setToolTip(
+            "로드맵에 등록되지 않은 개인 일정을 모두 삭제합니다."
+        )
+        self.cleanup_btn.clicked.connect(self.cleanup_personal_schedules)
+
         top_layout.addWidget(self.year_combo)
+        top_layout.addStretch()
         top_layout.addWidget(self.group_mgr_btn)
+        top_layout.addWidget(self.report_btn)
+        top_layout.addWidget(self.cleanup_btn)
         layout.addLayout(top_layout)
 
         # --- [메인: 간트 차트 영역] ---
@@ -453,6 +652,46 @@ class RoadmapTab(QWidget):
 
     def open_group_manager(self):
         dialog = GroupManagerDialog(self)
+        dialog.exec()
+
+    def cleanup_personal_schedules(self):
+        reply = QMessageBox.warning(
+            self,
+            "⚠️ 인수인계 정리 (개인 일정 삭제)",
+            "로드맵(★)에 등록되지 않은 모든 '개인 일정'을 영구적으로 삭제하시겠습니까?\n"
+            "이 작업은 되돌릴 수 없으며, 후임자에게 앱을 넘겨주기 직전에만 사용을 권장합니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            db_manager.delete_non_roadmap_schedules()
+            global_signals.schedule_updated.emit()
+            QMessageBox.information(
+                self,
+                "정리 완료",
+                "로드맵을 제외한 모든 개인 일정이 깔끔하게 삭제되었습니다.",
+            )
+
+    def generate_handover_report(self):
+        """현재 화면에 그려진 데이터를 바탕으로 인수인계서 팝업을 띄웁니다."""
+        year_text = self.year_combo.currentText()
+
+        if not year_text:
+            return
+
+        year = int(year_text.replace("년", ""))
+
+        groups = self.canvas.groups
+        schedules = self.canvas.schedules
+
+        if not schedules:
+            QMessageBox.information(
+                self, "안내", f"{year}년도에 등록된 로드맵 일정이 없습니다."
+            )
+            return
+
+        dialog = HandoverReportDialog(year, groups, schedules, self)
         dialog.exec()
 
     def refresh_data(self):
