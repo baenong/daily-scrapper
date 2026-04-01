@@ -694,6 +694,17 @@ class ScheduleTab(QWidget):
                 segments.append(current_seg)
 
             is_completed = schedule.get("is_completed", False)
+            inst_start_str = s_qdate.toString("yyyy-MM-dd")
+
+            # 반복일 경우 완료일을 개별 저장해서 비교한 후 완료여부를 판별한다.
+            if schedule.get("repeat_type", "none") != "none":
+                try:
+                    rule = json.loads(schedule.get("repeat_rule", ""))
+                    if inst_start_str in rule.get("completed_dates", []):
+                        is_completed = True
+                except Exception:
+                    pass
+
             if is_completed:
                 bg_color = "rgba(168, 168, 168, 0.15)"
             else:
@@ -736,7 +747,7 @@ class ScheduleTab(QWidget):
                     if is_first_seg
                     else " "
                 )
-                label = ClickableEventLabel(schedule, display_text)
+                label = ClickableEventLabel(schedule, display_text, render_date=inst_start_str)
 
                 style = f"""
                         background-color: {bg_color};

@@ -29,14 +29,15 @@ class DashboardTab(QWidget):
         layout.setContentsMargins(100, 40, 100, 40)
 
         welcome_label = TitleLabel(
-            f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요."
+            f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요.",
+            20,
         )
-        layout.addStretch(5)
+        layout.addStretch(3)
         layout.addWidget(welcome_label)
 
         self.trend_ticker = TrendTickerWidget()
         layout.addStretch(1)
-        layout.addWidget(TitleLabel("  🔥 구글 최신 트렌드(한국)", 12))
+        layout.addWidget(TitleLabel(" 🔥 구글 트렌드"))
         layout.addWidget(self.trend_ticker)
         layout.addStretch(1)
 
@@ -65,7 +66,7 @@ class DashboardTab(QWidget):
         cards_layout.addWidget(self.law_card, 1)
 
         layout.addLayout(cards_layout)
-        layout.addStretch(5)
+        layout.addStretch(6)
 
     def load_dashboard_data(self):
         if getattr(self, "is_fetching", False):

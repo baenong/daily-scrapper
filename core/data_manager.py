@@ -13,6 +13,7 @@ class SettingsManager:
         "window_opacity": (100, int),
         "always_on_top": (False, bool),
         "window_geometry": (None, None),
+        "zoom_level": (100, int),
     }
 
     @staticmethod

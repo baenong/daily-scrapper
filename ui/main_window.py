@@ -122,6 +122,7 @@ class DailyScraper(QMainWindow):
         self.theme_checkbox.setText(" 🌙 " if self.is_dark else " ☀️ ")
         self.apply_native_theme(self.is_dark)
         self.theme_checkbox.setChecked(self.is_dark)
+        self.theme_checkbox.setFixedWidth(65)
         self.theme_checkbox.toggled.connect(self.toggle_theme)
 
         # 바탕화면 위젯 모드 버튼
@@ -133,7 +134,7 @@ class DailyScraper(QMainWindow):
 
         self.zoom_label = QLabel(" 화면 배율:")
         self.zoom_spinbox = QSpinBox()
-        self.zoom_spinbox.setRange(70, 175)
+        self.zoom_spinbox.setRange(70, 145)
         self.zoom_spinbox.setSingleStep(5)
         self.zoom_spinbox.blockSignals(True)
         self.zoom_spinbox.setValue(self.current_zoom)
@@ -318,6 +319,7 @@ class DailyScraper(QMainWindow):
             self.opacity_slider.hide()
             self.size_grip.hide()
 
+            self.update_background_opacity(100)
             self.enforce_dark_titlebar(self.is_dark)
 
             self.showNormal()
@@ -466,7 +468,7 @@ class DailyScraper(QMainWindow):
             delta = event.angleDelta().y()
 
             new_size = self.current_zoom
-            if delta > 0 and self.current_zoom < 175:
+            if delta > 0 and self.current_zoom < 145:
                 new_size += 5
             elif delta < 0 and self.current_zoom > 70:
                 new_size -= 5
@@ -523,7 +525,7 @@ class DailyScraper(QMainWindow):
             "dark_mode": self.settings.get("dark_mode", True),
             "news_limit": self.settings.get("news_limit", 15),
             "news_cond_and": self.settings.get("news_cond_and", True),
-            "zoom_level": self.current_zoom,
+            "zoom_level": self.zoom_spinbox.value(),
         }
         SettingsManager.save(settings_to_save)
 

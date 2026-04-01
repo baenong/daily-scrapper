@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -78,8 +79,7 @@ class LawTab(QWidget):
 
         self.law_table = QTableWidget()
         self.law_table.setColumnCount(2)
-        self.law_table.setHorizontalHeaderLabels(["법령명", "시행(예정)일자"])
-        self.law_table.verticalHeader().setDefaultSectionSize(35)
+        self.law_table.setHorizontalHeaderLabels(["법령명", "시행(예정)일"])
 
         header = self.law_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -91,6 +91,8 @@ class LawTab(QWidget):
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
         splitter.setSizes([400, 1200])
+
+        global_signals.font_size_changed.connect(self.update_table_layout)
 
     def add_law_row(self, text, is_checked):
         row = EditableRowWidget(text, is_checked, self.save_laws_to_db)
@@ -134,11 +136,6 @@ class LawTab(QWidget):
             self._on_laws_error,
             law_names,
         )
-        # worker = AsyncTask(self._fetch_laws_in_background, law_names)
-        # worker.signals.result_ready.connect(self._on_laws_loaded)
-        # worker.signals.error_occurred.connect(self._on_laws_error)
-
-        # QThreadPool.globalInstance().start(worker)
 
     def _fetch_laws_in_background(self, law_names):
         raw_infos = law_scraper.get_laws_by_keywords(law_names)
@@ -206,3 +203,19 @@ class LawTab(QWidget):
         url = name_item.data(Qt.ItemDataRole.UserRole)
         if url:
             QDesktopServices.openUrl(QUrl(url))
+
+    def update_table_layout(self):
+
+        app: QApplication = QApplication.instance()
+        global_font = app.font()
+
+        self.law_table.setFont(global_font)
+        self.law_table.horizontalHeader().setFont(global_font)
+        self.law_table.verticalHeader().setFont(global_font)
+
+        current_font_size = global_font.pixelSize()
+        if current_font_size <= 0:
+            current_font_size = 14
+
+        new_row_height = int(current_font_size * 2.5)
+        self.law_table.verticalHeader().setDefaultSectionSize(new_row_height)

@@ -126,6 +126,7 @@ class TitleLabel(QLabel):
         super().__init__(text, parent)
         self.base_style = tw("font-bold", "mb-5")
         self.font_size = size
+        self.setMinimumWidth(1)
         self.update_font_size()
         global_signals.font_size_changed.connect(self.update_font_size)
 
@@ -140,12 +141,14 @@ class BoldLabel(QLabel):
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setStyleSheet(tw("font-bold", "mr-8"))
+        self.setMinimumWidth(1)
 
 
 class DescriptionLabel(QLabel):
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setStyleSheet(tw("text-c77", "mb-10"))
+        self.setMinimumWidth(1)
 
 
 class EllipsisLabel(QLabel):
@@ -234,22 +237,39 @@ class ArticleItemWidget(QWidget):
         super().__init__()
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(tw("bg-transparent", "p-5"))
+        self.setStyleSheet(tw("bg-transparent"))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.title_label = QLabel(f"{icon} {title}")
-        self.title_label.setStyleSheet(tw("text-14", "bg-transparent"))
+        self.title_label.setStyleSheet(tw("text-14", "pt-5"))
+
+        self.title_label.setMinimumWidth(1)
 
         self.meta_label = QLabel(f"[{source}]  🗓️ {pub_date}")
-        self.meta_label.setStyleSheet(tw("text-13", "text-c77", "bg-transparent"))
+        self.meta_label.setStyleSheet(
+            tw("text-13", "text-c77", "border-bb", "border-c80-30", "pb-10")
+        )
+
+        self.meta_label.setMinimumWidth(1)
 
         layout.addWidget(self.title_label)
         layout.addWidget(self.meta_label)
 
     def set_highligt(self, bg="bg-transparent"):
-        self.setStyleSheet(tw(bg, "p-5"))
+        self.setStyleSheet(tw(bg))
+        self.title_label.setStyleSheet(tw("text-14", "pt-5", "bg-transparent"))
+        self.meta_label.setStyleSheet(
+            tw(
+                "text-13",
+                "text-cCC",
+                "border-bb",
+                "border-c80-30",
+                "pb-5",
+                "bg-transparent",
+            )
+        )
 
 
 class DashboardItemWidget(QWidget):
@@ -270,6 +290,8 @@ class DashboardItemWidget(QWidget):
         else:
             self.label = QLabel(text)
 
+        self.label.setMinimumWidth(1)
+
         if is_completed:
             self.label.setStyleSheet(tw("text-gray"))
 
@@ -288,8 +310,8 @@ class DashboardCard(QFrame):
         )
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(20)
-        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 18, 12, 18)
 
         # 타이틀
         self.title_label = TitleLabel(title)
@@ -297,7 +319,7 @@ class DashboardCard(QFrame):
 
         # 리스트 (정보가 표시될 영역)
         self.items_container = QWidget()
-        self.items_container.setStyleSheet(tw("bg-transparent"))
+        self.items_container.setStyleSheet(tw("bg-transparent", "mb-5"))
 
         self.items_layout = QVBoxLayout(self.items_container)
         self.items_layout.setContentsMargins(0, 0, 0, 0)
@@ -333,24 +355,25 @@ class TrendRow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 12, 15, 12)  # 위아래 여백을 넉넉히 줍니다
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 5, 10, 5)  # 위아래 여백을 넉넉히 줍니다
 
         self.left_label = QLabel()
         self.left_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
+        self.left_label.setMinimumWidth(1)
 
         self.right_label = QLabel()
         self.right_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
+        self.right_label.setMinimumWidth(1)
 
         layout.addWidget(self.left_label, 1)
         layout.addWidget(self.right_label, 0)
 
     def set_data(self, rank_text, keyword, description, traffic):
-        desc_text = f" - {description}" if description else ""
+        desc_text = f" | {description}" if description else ""
         self.left_label.setText(f"{rank_text}{keyword}{desc_text}")
         self.right_label.setText(traffic)
 
@@ -359,7 +382,7 @@ class TrendRow(QWidget):
             self.setStyleSheet(
                 tw_sheet(
                     {
-                        "TrendRow": "rounded-4 bg-red-600",
+                        "TrendRow": "rounded-4 bg-red-600 border-bb border-gray",
                     }
                 )
             )
@@ -391,11 +414,10 @@ class TrendTickerWidget(QFrame):
         )
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
-        # 내용물: 4개의 Row를 담는 컨테이너 (실제로는 3개만 보이고 1개는 대기열 역할)
+        # 내용물: 6개의 Row를 담는 컨테이너 (실제로는 3개만 보이고 1개는 대기열 역할)
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(5)
 
         self.rows: list[TrendRow] = []
         for _ in range(6):
@@ -427,7 +449,7 @@ class TrendTickerWidget(QFrame):
             self.rows[2].set_data(
                 "🔥", "데이터 없음", "트렌드를 가져오지 못했습니다.", ""
             )
-            self.rows[2].set_style("highlight")
+            # self.rows[2].set_style("highlight")
 
     def _get_trend(self, offset):
         if not self.trends_data:
@@ -444,20 +466,20 @@ class TrendTickerWidget(QFrame):
                 rank_str, trend["keyword"], trend["description"], trend["traffic"]
             )
 
-        self.rows[0].set_style("dim")
-        self.rows[1].set_style("dim")
-        self.rows[2].set_style("highlight")
-        self.rows[3].set_style("dim")
-        self.rows[4].set_style("dim")
-        self.rows[5].set_style("dim")
+        # self.rows[0].set_style("dim")
+        # self.rows[1].set_style("dim")
+        # self.rows[2].set_style("highlight")
+        # self.rows[3].set_style("dim")
+        # self.rows[4].set_style("dim")
+        # self.rows[5].set_style("dim")
 
     def start_slide(self):
         if not self.trends_data:
             return
 
         # 포커스 이동
-        self.rows[2].set_style("dim")
-        self.rows[3].set_style("highlight")
+        # self.rows[2].set_style("dim")
+        # self.rows[3].set_style("highlight")
 
         # 첫 번째 행의 높이 + 여백만큼 스크롤바를 아래로
         slide_dist = self.rows[0].height() + self.content_layout.spacing()
@@ -497,19 +519,41 @@ class ScheduleActionMixin:
             self.edit_event()
 
     def toggle_event(self, checked=None):
-        if isinstance(checked, bool):
-            new_status = checked
-        else:
-            new_status = not self.schedule_data.get("is_completed", False)
-
         s = self.schedule_data
+        rtype = s.get("repeat_type", "none")
+        new_status = s.get("is_completed", False)
+        rule_str = s.get("repeat_rule", "")
+
+        if rtype != "none" and hasattr(self, "render_date") and self.render_date:
+            try:
+                rule = json.loads(rule_str) if rule_str else {}
+            except json.JSONDecodeError:
+                rule = {}
+
+            comp_dates = rule.get("completed_dates", [])
+
+            if self.render_date in comp_dates:
+                comp_dates.remove(self.render_date)
+            else:
+                comp_dates.append(self.render_date)
+
+            rule["completed_dates"] = comp_dates
+            rule_str = json.dumps(rule, ensure_ascii=False)
+            self.schedule_data["repeat_rule"] = rule_str
+        else:
+            if isinstance(checked, bool):
+                new_status = checked
+            else:
+                new_status = not s.get("is_completed", False)
+            self.schedule_data["is_completed"] = new_status
+
         db_manager.update_schedule(
             s["id"],
             s["title"],
             s["start_date"],
             s["end_date"],
             s["repeat_type"],
-            s.get("repeat_rule", ""),
+            rule_str,
             s["repeat_end"],
             s["color"],
             s.get("description", ""),
@@ -518,13 +562,15 @@ class ScheduleActionMixin:
             s.get("group_id", None),
         )
 
-        self.schedule_data["is_completed"] = new_status
         global_signals.schedule_updated.emit()
 
     def edit_event(self):
+        r_date = self.render_date if hasattr(self, "render_date") else ""
+
         dialog = EventDialog(
             self.schedule_data["start_date"],
             schedule_data=self.schedule_data,
+            render_date=r_date,
             parent=self.window(),
         )
         dialog.exec()
@@ -542,9 +588,10 @@ class ScheduleActionMixin:
 
 
 class ClickableEventLabel(QLabel, ScheduleActionMixin):
-    def __init__(self, schedule_data, text, parent=None):
+    def __init__(self, schedule_data, text, render_date="", parent=None):
         super().__init__(text, parent)
         self.schedule_data = schedule_data
+        self.render_date = render_date
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     # ToolTip 관련 Override
@@ -608,6 +655,16 @@ class ClickableEventLabel(QLabel, ScheduleActionMixin):
             return
 
         is_completed = self.schedule_data.get("is_completed", False)
+        rtype = self.schedule_data.get("repeat_type", "none")
+        if rtype != "none" and hasattr(self, "render_date") and self.render_date:
+            rule_str = self.schedule_data.get("repeat_rule", "")
+            try:
+                rule = json.loads(rule_str) if rule_str else {}
+                if self.render_date in rule.get("completed_dates", []):
+                    is_completed = True
+            except Exception:
+                pass
+
         status_text = "미완료 처리" if is_completed else "완료 처리"
 
         action_toggle = menu.addAction(f"✅ {status_text}")
@@ -715,11 +772,12 @@ class GroupManagerDialog(QDialog):
 class EventDialog(QDialog):
     """일정 관리 팝업"""
 
-    def __init__(self, date_str, schedule_data=None, parent=None):
+    def __init__(self, date_str, schedule_data=None, render_date="", parent=None):
         super().__init__(parent)
         self.setWindowTitle("일정 관리")
         self.setMinimumWidth(450)
         self.schedule_data = schedule_data
+        self.render_date = render_date
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -751,7 +809,6 @@ class EventDialog(QDialog):
         repeat_layout.addWidget(BoldLabel("🔁 반복"))
         self.repeat_combo = QComboBox()
         self.repeat_combo.addItems(["반복 없음", "일", "주", "월", "연"])
-        self.repeat_combo.setFixedWidth(100)
         repeat_layout.addWidget(self.repeat_combo)
         repeat_layout.addStretch()
         layout.addLayout(repeat_layout)
@@ -959,6 +1016,12 @@ class EventDialog(QDialog):
         self.is_completed_cb = QCheckBox("✅ 이 일정을 완료했습니다.")
         self.is_completed_cb.setStyleSheet(tw("my-8"))
         layout.addWidget(self.is_completed_cb)
+
+        self.is_instance_cb = QCheckBox("✅ 이번 회차를 완료했습니다.")
+        self.is_instance_cb.setStyleSheet(tw("mb-8"))
+        self.is_instance_cb.hide()
+        layout.addWidget(self.is_instance_cb)
+
         layout.addStretch()
 
         btn_layout = QHBoxLayout()
@@ -1244,7 +1307,22 @@ class EventDialog(QDialog):
                 self.roadmap_group_combo.setCurrentIndex(index)
 
         # Complete Check
-        self.is_completed_cb.setChecked(self.schedule_data.get("is_completed", False))
+        is_master_completed = self.schedule_data.get("is_completed", False)
+        self.is_completed_cb.setChecked(is_master_completed)
+
+        rtype = self.schedule_data.get("repeat_type", "none")
+        if rtype != "none" and self.render_date:
+            self.is_completed_cb.setText("✅ 반복 일정 전체 마스터 완료 (종료)")
+            self.is_instance_cb.setText(f"✅ 이번 회차({self.render_date}) 업무만 완료")
+            self.is_instance_cb.show()
+
+            # 개별 인스턴스 완료 여부 로드
+            try:
+                rule = json.loads(self.schedule_data.get("repeat_rule", "{}"))
+                if self.render_date in rule.get("completed_dates", []):
+                    self.is_instance_cb.setChecked(True)
+            except Exception:
+                pass
 
     def save_event(self):
         title = self.title_input.text().strip()
@@ -1279,11 +1357,16 @@ class EventDialog(QDialog):
                     return
                 repeat_end_str = repeat_end_date.toString("yyyy-MM-dd")
 
+            rule = {}
+            if self.schedule_data and self.schedule_data.get("repeat_rule"):
+                try:
+                    rule = json.loads(self.schedule_data["repeat_rule"])
+                except Exception:
+                    pass
+
             # JSON 딕셔너리 만들기
-            rule = {
-                "interval": self.interval_spin.value(),
-                "weekday_only": self.weekday_only_cb.isChecked(),
-            }
+            rule["interval"] = self.interval_spin.value()
+            rule["weekday_only"] = self.weekday_only_cb.isChecked()
 
             if rtype == "weekly":
                 # 체크된 요일의 인덱스(0:월 ~ 6:일)만 리스트로 수집
@@ -1311,7 +1394,19 @@ class EventDialog(QDialog):
                 rule["month"] = self.year_month_spin.value()
                 rule["date"] = self.year_day_spin.value()
 
-            # 딕셔너리를 문자열로 변환!
+            # 반복일정의 각 회차 완료일 저장
+            if self.is_instance_cb.isVisible():
+                comp_dates = rule.get("completed_dates", [])
+
+                if self.is_instance_cb.isChecked():
+                    if self.render_date not in comp_dates:
+                        comp_dates.append(self.render_date)
+                else:
+                    if self.render_date in comp_dates:
+                        comp_dates.remove(self.render_date)
+
+                rule["completed_dates"] = comp_dates
+
             repeat_rule_str = json.dumps(rule, ensure_ascii=False)
 
         color_hex = self.colors[self.color_combo.currentText()]

@@ -65,8 +65,8 @@ class NewsTab(QWidget):
 
         self.radio_and.setChecked(is_and_checked)
         self.radio_or.setChecked(not is_and_checked)
-        self.radio_and.setFixedWidth(55)
-        self.radio_or.setFixedWidth(55)
+        self.radio_and.setFixedWidth(75)
+        self.radio_or.setFixedWidth(75)
 
         self.radio_and.toggled.connect(self.change_news_condition)
 
@@ -81,7 +81,7 @@ class NewsTab(QWidget):
         self.news_limit.setRange(1, 50)
         self.news_limit.setValue(self.settings.get("news_limit", 30))
         self.news_limit.valueChanged.connect(self.change_news_limit)
-        self.news_limit.setFixedWidth(65)
+        self.news_limit.setFixedWidth(80)
 
         self.search_btn = StyledButton("🔍 검색", COLORS["green-500"])
         self.search_btn.clicked.connect(self.search_news)

@@ -312,7 +312,7 @@ class RoadmapCanvas(QWidget):
 
             if is_completed:
                 text_css = ""
-                bg_color = f"rgba({bg_rgb}, 0.3)"
+                bg_color = f"rgba({bg_rgb}, 0.5)"
 
             else:
                 bg_color = s["color"]
