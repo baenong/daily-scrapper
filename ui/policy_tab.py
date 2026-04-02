@@ -192,7 +192,7 @@ class PolicyTab(QWidget):
 
     def _on_policy_error(self, error_msg):
         self.search_btn.setEnabled(True)
-        self.search_btn.setText("🔍 정책 브리핑 조회")
+        self.search_btn.setText("🔍 정책 브리핑 조회 ")
         self.policy_list_view.clear()
         self.policy_list_view.addItem("❌ 브리핑 조회 중 오류가 발생했습니다.")
         print(f"정책브리핑 로딩 에러: {error_msg}")

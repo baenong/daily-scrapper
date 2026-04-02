@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt, QRect
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from ui.main_window import DailyScraper
+from core.tw_utils import BASIC_SIZE
 from core import db_manager
 
 APP_SERVER_NAME = "G_Daily_Single_Instance_Lock"
@@ -110,22 +111,46 @@ def main():
     app.processEvents()
 
     # load resources
-    font_path = resource_path(os.path.join("resources", "PretendardVariable.ttf"))
-    icon_path = resource_path(os.path.join("resources", "icon.ico"))
-
     splash.showMessage("리소스 로드 중...")
     app.processEvents()
     time.sleep(0.5)
 
-    if os.path.exists(font_path):
-        font_id = QFontDatabase.addApplicationFont(font_path)
+    # Font Loading
+    font_files = [
+        "Pretendard-Thin.otf",
+        "Pretendard-ExtraLight.otf",
+        "Pretendard-Light.otf",
+        "Pretendard-Regular.otf",
+        "Pretendard-Medium.otf",
+        "Pretendard-SemiBold.otf",
+        "Pretendard-Bold.otf",
+        "Pretendard-ExtraBold.otf",
+        "Pretendard-Black.otf",
+    ]
 
-        if font_id != -1:
-            font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
-            font = QFont(font_family)
-            font.setPixelSize(14)
-            app.setFont(font)
+    loaded_family = ""
 
+    for font_file in font_files:
+        font_path = resource_path(os.path.join("resources", "fonts", font_file))
+        if os.path.exists(font_path):
+            font_id = QFontDatabase.addApplicationFont(font_path)
+
+            if font_id != -1 and not loaded_family:
+                loaded_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+
+    if loaded_family:
+        font = QFont(loaded_family)
+        font.setPixelSize(BASIC_SIZE)
+
+        font.setStyleStrategy(
+            QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferQuality
+        )
+        font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+
+        app.setFont(font)
+
+    # Icon Loading
+    icon_path = resource_path(os.path.join("resources", "icon.ico"))
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 

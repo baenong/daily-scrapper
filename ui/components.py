@@ -47,7 +47,7 @@ from PySide6.QtCore import (
 )
 from core import db_manager
 from core.signals import global_signals
-from core.tw_utils import DEFAULT_COLORS, COLORS, tw, tw_sheet
+from core.tw_utils import DEFAULT_COLORS, COLORS, tw, tw_sheet, BASIC_SIZE
 
 
 class StyledButton(QPushButton):
@@ -59,7 +59,9 @@ class StyledButton(QPushButton):
     text_color: (default: white) 글자색
     """
 
-    def __init__(self, text, bg_color_hex, text_color=None, padding="5px 14px"):
+    def __init__(
+        self, text, bg_color_hex, text_color=None, padding="5px 14px", weight=600
+    ):
         super().__init__(text)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -95,6 +97,7 @@ class StyledButton(QPushButton):
                 border-radius: 4px;
                 padding: {padding};
                 min-height: 20px;
+                font-weight: {weight};
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
@@ -122,9 +125,9 @@ class DoubleClickLineEdit(QLineEdit):
 
 
 class TitleLabel(QLabel):
-    def __init__(self, text="", size=14, parent=None):
+    def __init__(self, text="", size=BASIC_SIZE, weight=700, parent=None):
         super().__init__(text, parent)
-        self.base_style = tw("font-bold", "mb-5")
+        self.base_style = tw(f"font-{weight}", "mb-5")
         self.font_size = size
         self.setMinimumWidth(1)
         self.update_font_size()
@@ -138,9 +141,9 @@ class TitleLabel(QLabel):
 
 
 class BoldLabel(QLabel):
-    def __init__(self, text="", parent=None):
+    def __init__(self, text="", size=14, parent=None):
         super().__init__(text, parent)
-        self.setStyleSheet(tw("font-bold", "mr-8"))
+        self.setStyleSheet(tw("font-700", "mr-8", f"text-{size}"))
         self.setMinimumWidth(1)
 
 
@@ -243,13 +246,20 @@ class ArticleItemWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.title_label = QLabel(f"{icon} {title}")
-        self.title_label.setStyleSheet(tw("text-14", "pt-5"))
+        self.title_label.setStyleSheet(tw(f"text-{BASIC_SIZE}", "pt-10"))
 
         self.title_label.setMinimumWidth(1)
 
         self.meta_label = QLabel(f"[{source}]  🗓️ {pub_date}")
         self.meta_label.setStyleSheet(
-            tw("text-13", "text-c77", "border-bb", "border-c80-30", "pb-10")
+            tw(
+                f"text-{BASIC_SIZE-1}",
+                "text-c77",
+                "border-bb",
+                "border-c80-30",
+                "pt-5",
+                "pb-10",
+            )
         )
 
         self.meta_label.setMinimumWidth(1)
@@ -259,14 +269,17 @@ class ArticleItemWidget(QWidget):
 
     def set_highligt(self, bg="bg-transparent"):
         self.setStyleSheet(tw(bg))
-        self.title_label.setStyleSheet(tw("text-14", "pt-5", "bg-transparent"))
+        self.title_label.setStyleSheet(
+            tw(f"text-{BASIC_SIZE}", "pt-10", "bg-transparent")
+        )
         self.meta_label.setStyleSheet(
             tw(
-                "text-13",
-                "text-cCC",
+                f"text-{BASIC_SIZE-1}",
+                "text-c99",
                 "border-bb",
                 "border-c80-30",
-                "pb-5",
+                "pt-5",
+                "pb-10",
                 "bg-transparent",
             )
         )
@@ -283,7 +296,7 @@ class DashboardItemWidget(QWidget):
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 8, 5, 8)
+        layout.setContentsMargins(5, 6, 5, 6)
 
         if use_ellipsis:
             self.label = EllipsisLabel(text)
@@ -319,17 +332,17 @@ class DashboardCard(QFrame):
 
         # 리스트 (정보가 표시될 영역)
         self.items_container = QWidget()
-        self.items_container.setStyleSheet(tw("bg-transparent", "mb-5"))
+        self.items_container.setStyleSheet(tw("bg-transparent", "mb-3"))
 
         self.items_layout = QVBoxLayout(self.items_container)
-        self.items_layout.setContentsMargins(0, 0, 0, 0)
+        self.items_layout.setContentsMargins(0, 8, 0, 8)
         self.items_layout.setSpacing(0)
 
         layout.addWidget(self.items_container)
         layout.addStretch(1)
 
         self.detail_btn = StyledButton(btn_text, COLORS["c33"], COLORS["blue-500"])
-        self.detail_btn.setFixedHeight(40)
+        self.detail_btn.setFixedHeight(50)
         self.detail_btn.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -466,20 +479,9 @@ class TrendTickerWidget(QFrame):
                 rank_str, trend["keyword"], trend["description"], trend["traffic"]
             )
 
-        # self.rows[0].set_style("dim")
-        # self.rows[1].set_style("dim")
-        # self.rows[2].set_style("highlight")
-        # self.rows[3].set_style("dim")
-        # self.rows[4].set_style("dim")
-        # self.rows[5].set_style("dim")
-
     def start_slide(self):
         if not self.trends_data:
             return
-
-        # 포커스 이동
-        # self.rows[2].set_style("dim")
-        # self.rows[3].set_style("highlight")
 
         # 첫 번째 행의 높이 + 여백만큼 스크롤바를 아래로
         slide_dist = self.rows[0].height() + self.content_layout.spacing()
@@ -621,7 +623,7 @@ class ClickableEventLabel(QLabel, ScheduleActionMixin):
                     "QMenu": "bg-white p-5 border-b border-cCC text-13 text-black no-underline",
                     "QMenu::item": "py-6 px-10 no-underline text-c13",
                     "QMenu::item:selected": "bg-cF0",
-                    "QMenu::item:disabled": "text-c33 font-bold bg-cFA",
+                    "QMenu::item:disabled": "text-c33 font-700 bg-cFA",
                     "QMenu::separator": "h-1 bg-cE0 my-2 mx-0",
                 }
             )
@@ -809,6 +811,7 @@ class EventDialog(QDialog):
         repeat_layout.addWidget(BoldLabel("🔁 반복"))
         self.repeat_combo = QComboBox()
         self.repeat_combo.addItems(["반복 없음", "일", "주", "월", "연"])
+        self.repeat_combo.setMinimumWidth(125)
         repeat_layout.addWidget(self.repeat_combo)
         repeat_layout.addStretch()
         layout.addLayout(repeat_layout)
@@ -1027,8 +1030,8 @@ class EventDialog(QDialog):
         btn_layout = QHBoxLayout()
         self.save_btn = StyledButton("저장", COLORS["green-500"])
         self.cancel_btn = StyledButton("취소", "transparent", COLORS["c77"])
-        self.save_btn.clicked.connect(self.save_event)
         self.cancel_btn.clicked.connect(self.reject)
+        self.save_btn.clicked.connect(self.save_event)
 
         if self.schedule_data:
             self.delete_btn = StyledButton("삭제", COLORS["red-500"])

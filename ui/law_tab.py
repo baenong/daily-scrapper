@@ -15,7 +15,7 @@ from datetime import datetime
 
 from ui.components import TitleLabel, DescriptionLabel, StyledButton, EditableRowWidget
 from core import law_scraper, db_manager
-from core.tw_utils import COLORS
+from core.tw_utils import COLORS, BASIC_SIZE
 from core.signals import global_signals
 from core.worker import run_async
 
@@ -45,7 +45,7 @@ class LawTab(QWidget):
         )
 
         control_layout = QHBoxLayout()
-        self.law_refresh_btn = StyledButton("🔍 법령 정보 조회", COLORS["green-500"])
+        self.law_refresh_btn = StyledButton("🔍 법령 정보 조회 ", COLORS["green-500"])
         self.law_refresh_btn.clicked.connect(self.refresh_laws)
 
         control_layout.addStretch()
@@ -92,6 +92,7 @@ class LawTab(QWidget):
         splitter.addWidget(right_widget)
         splitter.setSizes([400, 1200])
 
+        self.update_table_layout()
         global_signals.font_size_changed.connect(self.update_table_layout)
 
     def add_law_row(self, text, is_checked):
@@ -215,7 +216,7 @@ class LawTab(QWidget):
 
         current_font_size = global_font.pixelSize()
         if current_font_size <= 0:
-            current_font_size = 14
+            current_font_size = BASIC_SIZE
 
         new_row_height = int(current_font_size * 2.5)
         self.law_table.verticalHeader().setDefaultSectionSize(new_row_height)

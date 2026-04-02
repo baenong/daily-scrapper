@@ -14,7 +14,6 @@ from core.worker import run_async
 
 
 class DashboardTab(QWidget):
-    """오늘의 일정, 뉴스, 법령을 한눈에 보여주는 첫 화면 탭입니다."""
 
     def __init__(self, settings, go_to_tab_callback):
         super().__init__()
@@ -30,7 +29,8 @@ class DashboardTab(QWidget):
 
         welcome_label = TitleLabel(
             f"👋 환영합니다! 오늘({QDate.currentDate().toString('yyyy.MM.dd')})의 주요 현황을 확인하세요.",
-            20,
+            size=18,
+            weight=800,
         )
         layout.addStretch(3)
         layout.addWidget(welcome_label)
@@ -104,63 +104,81 @@ class DashboardTab(QWidget):
         today_str_law = today_dt.strftime("%Y.%m.%d")
 
         # 1. 일정 데이터 수집
-        all_schedules = db_manager.get_schedules()
-        for s in all_schedules:
-            if get_instances(s, today_qdate, today_qdate):
-                result["todos"].append(s)
-        result["todos"].sort(key=lambda x: x.get("is_completed", False))
+        try:
+            all_schedules = db_manager.get_schedules()
+            for s in all_schedules:
+                if get_instances(s, today_qdate, today_qdate):
+                    result["todos"].append(s)
+            result["todos"].sort(key=lambda x: x.get("is_completed", False))
+        except Exception as e:
+            print(f"일정 로딩 오류: {e}")
 
         # 2. 뉴스 데이터 수집
-        db_news_kws = db_manager.load_news_keywords()
-        result["has_news_kw"] = len(db_news_kws) > 0
+        try:
+            db_news_kws = db_manager.load_news_keywords()
+            result["has_news_kw"] = len(db_news_kws) > 0
 
-        selected_groups = []
-        for kw in db_news_kws:
-            if kw.get("checked", True):
-                words = [w.strip() for w in kw["text"].split(",") if w.strip()]
-                if words:
-                    selected_groups.append(" ".join(words))
+            selected_groups = []
+            for kw in db_news_kws:
+                if kw.get("checked", True):
+                    words = [w.strip() for w in kw["text"].split(",") if w.strip()]
+                    if words:
+                        selected_groups.append(" ".join(words))
 
-        if selected_groups:
-            is_and_cond = self.settings.get("news_cond_and", True)
-            if is_and_cond:
-                final_query = " ".join(selected_groups)
-                result["news"] = news_scraper.get_news_by_query(final_query, 5)
-            else:
-                result["news"] = news_scraper.get_news_by_or_query(selected_groups, 5)
+            if selected_groups:
+                is_and_cond = self.settings.get("news_cond_and", True)
+                if is_and_cond:
+                    final_query = " ".join(selected_groups)
+                    result["news"] = news_scraper.get_news_by_query(final_query, 5)
+                else:
+                    result["news"] = news_scraper.get_news_by_or_query(
+                        selected_groups, 5
+                    )
+        except Exception as e:
+            print(f"뉴스 API 오류: {e}")
 
         # 3. 정책 브리핑 데이터 수집
-        db_policy_kws = db_manager.load_departments()
-        rss_urls = [kw["rss_url"] for kw in db_policy_kws if kw.get("checked", True)]
+        try:
+            db_policy_kws = db_manager.load_departments()
+            rss_urls = [
+                kw["rss_url"] for kw in db_policy_kws if kw.get("checked", True)
+            ]
 
-        if rss_urls:
-            try:
-                result["policy"] = policy_scraper.get_policy_briefings(
-                    rss_urls, limit=5
-                )
-            except Exception:
-                pass
+            if rss_urls:
+                try:
+                    result["policy"] = policy_scraper.get_policy_briefings(
+                        rss_urls, limit=5
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"정책 브리핑 API 오류: {e}")
 
         # 4. 법령 데이터 수집
-        db_law_kws = db_manager.load_law_keywords()
-        result["has_law_kw"] = len(db_law_kws) > 0
+        try:
+            db_law_kws = db_manager.load_law_keywords()
+            result["has_law_kw"] = len(db_law_kws) > 0
 
-        law_keywords = [law["text"] for law in db_law_kws if law.get("checked", True)]
-        if law_keywords:
-            today_laws = []
-            all_infos = law_scraper.get_laws_by_keywords(law_keywords)
+            law_keywords = [
+                law["text"] for law in db_law_kws if law.get("checked", True)
+            ]
+            if law_keywords:
+                today_laws = []
+                all_infos = law_scraper.get_laws_by_keywords(law_keywords)
 
-            for info in all_infos:
-                if info["enforce_date"] == today_str_law:
-                    today_laws.append(info["name"])
+                for info in all_infos:
+                    if info["enforce_date"] == today_str_law:
+                        today_laws.append(info["name"])
 
-            result["laws"] = list(set(today_laws))
+                result["laws"] = list(set(today_laws))
+        except Exception as e:
+            print(f"법령 API 오류: {e}")
 
         # 5. 트렌드
         try:
             result["trends"] = news_scraper.get_google_trends()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"트렌드 API 오류: {e}")
 
         return result
 

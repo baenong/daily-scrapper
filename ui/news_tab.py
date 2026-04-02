@@ -83,7 +83,7 @@ class NewsTab(QWidget):
         self.news_limit.valueChanged.connect(self.change_news_limit)
         self.news_limit.setFixedWidth(80)
 
-        self.search_btn = StyledButton("🔍 검색", COLORS["green-500"])
+        self.search_btn = StyledButton("🔍 검색  ", COLORS["green-500"])
         self.search_btn.clicked.connect(self.search_news)
 
         cond_layout.addWidget(self.radio_and)

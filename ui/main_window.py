@@ -1,6 +1,13 @@
 import sys
 import ctypes
-from PySide6.QtGui import QMouseEvent, QCloseEvent, QAction, QPainter, QWheelEvent
+from PySide6.QtGui import (
+    QMouseEvent,
+    QCloseEvent,
+    QAction,
+    QPainter,
+    QWheelEvent,
+    QFont,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -23,7 +30,7 @@ from PySide6.QtCore import QPropertyAnimation, QEasingCurve, Qt
 # core module
 from core import startup_manager
 from core.data_manager import SettingsManager
-from core.tw_utils import COLORS, tw, tw_sheet
+from core.tw_utils import COLORS, tw, tw_sheet, BASIC_SIZE
 from core.style import setup_theme, get_global_qss
 from core.signals import global_signals
 
@@ -127,7 +134,7 @@ class DailyScraper(QMainWindow):
 
         # 바탕화면 위젯 모드 버튼
         self.widget_btn = StyledButton(
-            "🖥️ 위젯 모드", COLORS["blue-300"], COLORS["blue-700"]
+            "🖥️ 위젯 모드 ", COLORS["blue-300"], COLORS["blue-700"]
         )
         self.widget_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.widget_btn.clicked.connect(self.toggle_widget_mode)
@@ -144,7 +151,7 @@ class DailyScraper(QMainWindow):
         self.zoom_spinbox.setCursor(Qt.CursorShape.PointingHandCursor)
         self.zoom_spinbox.valueChanged.connect(self.on_zoom_changed)
 
-        self.top_checkbox = QCheckBox("📌 맨 앞 고정")
+        self.top_checkbox = QCheckBox("📌 맨 앞 고정 ")
         self.top_checkbox.setStyleSheet(tw("text-c77", "mx-5"))
         self.top_checkbox.setChecked(self.settings.get("always_on_top", False))
         self.top_checkbox.toggled.connect(self.toggle_always_on_top)
@@ -159,13 +166,15 @@ class DailyScraper(QMainWindow):
         self.opacity_slider.valueChanged.connect(self.update_background_opacity)
 
         # 기존 자동 실행 및 설정 버튼
-        self.startup_checkbox = QCheckBox("💻 자동실행")
+        self.startup_checkbox = QCheckBox("💻 자동실행 ")
         self.startup_checkbox.setStyleSheet(tw("text-c77", "mr-5"))
         self.startup_checkbox.setChecked(startup_manager.is_startup_enabled())
         self.startup_checkbox.toggled.connect(self.toggle_startup)
 
         # 도움말
-        self.help_btn = StyledButton("도움말", COLORS["green-300"], COLORS["c13"])
+        self.help_btn = StyledButton(
+            "도움말", COLORS["green-300"], COLORS["c13"], weight=400
+        )
         self.help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.help_btn.clicked.connect(self.show_help_dialog)
 
@@ -201,13 +210,14 @@ class DailyScraper(QMainWindow):
         self.tray_icon.setIcon(self.windowIcon())
         self.tray_icon.setToolTip("G-Daily")
 
-        tray_menu = QMenu()
-        tray_font = tray_menu.font()
-        tray_font.setPixelSize(14)
-        tray_menu.setFont(tray_font)
-
-        open_action = QAction("활성화", self)
+        open_action = QAction("G-Daily 열기", self)
         open_action.triggered.connect(self.bring_to_front)
+
+        tray_menu = QMenu()
+        tray_menu.setObjectName("TrayMenu")
+        fixed_font = QFont("Malgun Gothic")
+        fixed_font.setPixelSize(12)
+        tray_menu.setFont(fixed_font)
 
         tray_menu.addAction(open_action)
         tray_menu.addSeparator()
@@ -226,10 +236,9 @@ class DailyScraper(QMainWindow):
         setup_theme(app, is_dark)
 
     def apply_global_font_size(self, percent):
-
         self.current_zoom = percent
 
-        base_size = 14
+        base_size = BASIC_SIZE
         step_diff = int((percent - 100) / 5)
         new_pixel_size = base_size + step_diff
 
@@ -240,6 +249,7 @@ class DailyScraper(QMainWindow):
             font.setPixelSize(new_pixel_size)
             app.setFont(font)
             app.setStyleSheet(get_global_qss(self.is_dark))
+
             global_signals.font_size_changed.emit()
 
     def enforce_dark_titlebar(self, is_dark: bool):

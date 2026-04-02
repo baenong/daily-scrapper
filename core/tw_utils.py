@@ -1,5 +1,7 @@
 from functools import lru_cache
 
+BASIC_SIZE = 14
+
 DEFAULT_COLORS = {
     " 빨간색": "#FF968A",
     " 주황색": "#FFAD60",
@@ -17,10 +19,13 @@ COLORS = {
     "red-700": "#D32F2F",
     "green-300": "#B2FBA5",
     "green-500": "#4CAF50",
+    "blue-200": "#2980b9",
     "blue-300": "#E3F2FD",
     "blue-500": "#2196F3",
     "blue-600": "#A6DAF4",
     "blue-700": "#1976D2",
+    "gray-300": "#7f8c8d",
+    "gray-900": "#F8F9F7",
     "black-300": "#202124",
     "black-400": "#282A2D",
     "c13": "#131313",
@@ -50,14 +55,16 @@ BORDER_STYLES = {"b", "bb", "solid", "dashed", "dotted", "double", "none"}
 STYLES = {
     "rounded": "border-radius: 4px;",
     "border": "border-width: 1px;",
-    "font-bold": "font-weight: bold;",
+    "font-malgun": "font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;",
     "text-windowtext": "color: palette(window-text);",
     "line-through": "text-decoration: line-through;",
     "no-underline": "text-decoration: none;",
 }
 
 
-def px_to_em(px_value: str, base_size: float = 14.0, slice: int = 0) -> str:
+def px_to_em(
+    px_value: str, base_size: float = float(BASIC_SIZE), slice: int = 0
+) -> str:
     val_str = px_value[slice:] if slice > 0 else px_value
 
     if not val_str.strip():
@@ -127,6 +134,14 @@ def tw(*classes: str):
                 parsed = parse_color(c, "text-", "color")
                 if parsed:
                     style.append(parsed)
+
+        elif c.startswith("font-"):
+            val = c[5:]
+            if val.isdigit():
+                style.append(f"font-weight: {val};")
+            else:
+                if c in STYLES:
+                    style.append(STYLES[c])
 
         elif c.startswith("border-"):
             val = c[7:]

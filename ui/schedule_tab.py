@@ -19,6 +19,7 @@ from PySide6.QtCore import Qt, QDate, Signal, QTimer, QThreadPool
 from PySide6.QtGui import QColor, QMouseEvent, QFont, QFontMetrics
 from ui.components import (
     BoldLabel,
+    TitleLabel,
     StyledButton,
     ClickableEventLabel,
     EventDialog,
@@ -27,7 +28,7 @@ from ui.components import (
 from core import db_manager, law_scraper
 from core.worker import AsyncTask
 from core.signals import global_signals
-from core.style import tw, tw_sheet, COLORS
+from core.tw_utils import tw, tw_sheet, COLORS, BASIC_SIZE
 
 
 def get_holidays(year, month):
@@ -269,20 +270,24 @@ class DailyEventsDialog(QDialog):
         self.setFixedSize(320, 500)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(BoldLabel(f"{date_obj.toString('yy. MM. dd')}"))
+        layout.addWidget(TitleLabel(f"{date_obj.toString('yy. MM. dd')}", size=16))
 
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
-            tw_sheet({"QListWidget": "border-b border-c99 rounded my-10 p-3"})
+            tw_sheet({"QListWidget": "border-b border-c99 rounded my-5 p-3"})
         )
         layout.addWidget(self.list_widget)
 
         btn_layout = QHBoxLayout()
 
+        self.cancel_btn = StyledButton("취소", "transparent", COLORS["c77"])
+        self.cancel_btn.clicked.connect(self.reject)
+
         self.add_btn = StyledButton("신규 일정", COLORS["blue-500"], padding="5px 10px")
         self.add_btn.clicked.connect(self.add_new_event)
 
         btn_layout.addStretch()
+        btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.add_btn)
 
         layout.addLayout(btn_layout)
@@ -400,7 +405,7 @@ class ScheduleTab(QWidget):
         nav_layout = QHBoxLayout()
 
         # 오늘 버튼
-        self.today_btn = StyledButton("오늘", COLORS["blue-300"], COLORS["blue-700"])
+        self.today_btn = StyledButton("오늘", COLORS["blue-500"])
 
         # 이전 달 버튼
         self.prev_btn = StyledButton("◀ 이전 달", "transparent", COLORS["c77"])
@@ -587,7 +592,7 @@ class ScheduleTab(QWidget):
 
                 if is_holiday:
                     bg_color = "red-400-80"
-                    cell_widget.date_label.setStyleSheet(tw("text-red", "font-bold"))
+                    cell_widget.date_label.setStyleSheet(tw("text-red"))
                     cell_widget.date_label.setText(
                         f"{date_day_str} {monthly_holidays[date_str]}"
                     )
@@ -747,11 +752,13 @@ class ScheduleTab(QWidget):
                     if is_first_seg
                     else " "
                 )
-                label = ClickableEventLabel(schedule, display_text, render_date=inst_start_str)
+                label = ClickableEventLabel(
+                    schedule, display_text, render_date=inst_start_str
+                )
 
                 style = f"""
                         background-color: {bg_color};
-                        {tw("text-14", "p-2", text_decor, "text-" + text_color)}
+                        {tw(f"text-{BASIC_SIZE}", "p-2", text_decor, "text-" + text_color)}
                         border-top-left-radius: {r_left};
                         border-top-right-radius: {r_right};
                         border-bottom-right-radius: {r_right};

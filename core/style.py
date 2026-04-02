@@ -89,20 +89,22 @@ def get_global_qss(is_dark: bool) -> str:
         # HeaderView
         #
         "QHeaderView": "bg-transparent border-none",
-        "QHeaderView::section": f"""bg-{header_bg} text-{text_color} font-bold 
+        "QHeaderView::section": f"""bg-{header_bg} text-{text_color} font-700 
                                     py-8 px-5 border-b border-{border_color}""",
         #
         # Table
         #
-        "QTableWidget": f"""border-none bg-{item_bg} grid-{border_color}
-                            sel-bg-{blue_color} text-{text_color}""",
+        "QTableWidget": f"""
+                            border-none bg-{item_bg} grid-{border_color}
+                            sel-bg-{blue_color} text-{text_color}
+                        """,
         "QTableWidgetItem": f"bg-{item_bg} text-{text_color}",
         "QTableCornerButton::section": f"bg-{header_bg} border-b border-{border_color}",
         #
         # TabBar
         #
         "QTabBar::tab": f"bg-transparent text-{text_color} px-8 py-6 mr-2 rounded-t-4",
-        "QTabBar::tab:selected": f"""bg-{tab_selected_bg} text-{text_color} 
+        "QTabBar::tab:selected": f"""bg-{tab_selected_bg} font-700 text-{text_color} 
                                     border-bb-3 border-{blue_color}""",
     }
 
@@ -190,7 +192,7 @@ def get_global_qss(is_dark: bool) -> str:
         "QListWidget": "bg-transparent",
         "QListWidget::item": f"text-{text_color} rounded-4",
         "QListWidget::item:hover": f"bg-{hover_bg}",
-        "QListWidget::item:selected": f"bg-{blue_color} text-white border-none",
+        "QListWidget::item:selected": f"bg-{blue_color}-50 text-white border-none",
     }
     listwidget_qss = tw_sheet(listwidget_rules)
 
@@ -233,6 +235,12 @@ def get_global_qss(is_dark: bool) -> str:
         "QMenu::item:selected": f"bg-{blue_color} text-white rounded-4",
         "QMenu::item:disabled": f"text-{disabled_text} bg-transparent",
         "QMenu::separator": f"h-1 my-2 bg-{border_color}",
+        #
+        # Tray Menu
+        "QMenu#TrayMenu": f"bg-gray-900 border-b border-{border_color} rounded-6 py-2 text-12 font-malgun",
+        "QMenu#TrayMenu::item": f"py-4 px-16 bg-transparent text-c13 text-12 font-malgun",
+        "QMenu#TrayMenu::item:selected": f"bg-{blue_color} text-white rounded-4",
+        "QMenu#TrayMenu::separator": f"h-1 my-2 bg-{border_color}",
     }
     menu_qss = tw_sheet(menu_rules)
 

@@ -15,7 +15,7 @@ from PySide6.QtGui import QPainter, QColor, QPen, QPalette, QFont, QFontMetrics
 
 from core import db_manager
 from core.signals import global_signals
-from core.tw_utils import COLORS, tw
+from core.tw_utils import COLORS, tw, BASIC_SIZE
 from ui.components import (
     TitleLabel,
     StyledButton,
@@ -28,12 +28,16 @@ class HandoverReportDialog(QDialog):
     def __init__(self, year, groups, schedules, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"📄 {year}년도 업무 인수인계서")
-        self.resize(800, 600)
+        self.resize(600, 750)
         layout = QVBoxLayout(self)
+
+        self.settings = parent.settings
 
         # 텍스트와 HTML을 예쁘게 보여주는 브라우저 위젯
         self.browser = QTextBrowser()
-        self.browser.setStyleSheet(tw("bg-white", "text-black", "p-10", "text-14"))
+        self.browser.setStyleSheet(
+            tw("bg-transparent", "text-windowtext", "p-10", f"text-{BASIC_SIZE}")
+        )
         layout.addWidget(self.browser)
 
         # HTML 기반의 인수인계서 생성 및 렌더링
@@ -41,18 +45,20 @@ class HandoverReportDialog(QDialog):
         self.browser.setHtml(html)
 
         btn_layout = QHBoxLayout()
-        self.copy_btn = StyledButton("📋 클립보드에 전체 복사", COLORS["blue-500"])
+        self.copy_btn = StyledButton("📋 클립보드에 텍스트 복사 ", COLORS["blue-500"])
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
 
         self.close_btn = StyledButton("닫기", "transparent", COLORS["c77"])
         self.close_btn.clicked.connect(self.accept)
 
         btn_layout.addStretch()
-        btn_layout.addWidget(self.copy_btn)
         btn_layout.addWidget(self.close_btn)
+        btn_layout.addWidget(self.copy_btn)
         layout.addLayout(btn_layout)
 
     def build_html(self, year, groups, schedules):
+        is_dark = self.settings.get("dark_mode", True)
+
         # 1. 데이터를 그룹별로 분류
         grouped = {g["id"]: [] for g in groups}
         grouped[None] = []
@@ -69,28 +75,34 @@ class HandoverReportDialog(QDialog):
 
         # 2. HTML 문서 조립 시작
         html = f"""
-        <div style='font-family: "Pretendard", "Malgun Gothic", sans-serif;'>
-            <h1 style='text-align: center; color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px;'>
-                {year}년도 연간 업무 인수인계서
+        <div style='font-family: "Pretendard Variable", "Malgun Gothic", sans-serif;'>
+            <h1 style='text-align: center; {tw("text-cF5" if is_dark else "text-c13", "pb-10", "font-900")}'>
+                {year}년도 연간 업무 로드맵
             </h1>
         """
 
+        sorted_groups = sorted(
+            groups, key=lambda g: 1 if g.get("name") == "미지정" else 0
+        )
+
         # 3. 그룹별 데이터 출력
-        for g in groups:
+        for g in sorted_groups:
             g_id = g["id"]
             if not grouped[g_id]:
                 continue
 
-            html += (
-                f"<h2 style='color: #2980b9; margin-top: 30px;'>📂 {g['name']}</h2><ul>"
-            )
+            grouped[g_id].sort(key=lambda x: x.get("start_date", ""))
+            title_color = "gray-300" if g.get("name") == "미지정" else "blue-200"
+
+            html += f"<h2 style='{tw(f"text-{title_color}", "mt-30", "mb-10", "font-800")}'>📂 {g['name']}</h2><ul>"
             for s in grouped[g_id]:
                 html += self.format_schedule(s)
             html += "</ul>"
 
         # 미지정 그룹 출력
         if grouped[None]:
-            html += "<h2 style='color: #7f8c8d; margin-top: 30px;'>📂 미지정 그룹 (기타 업무)</h2><ul>"
+            grouped[None].sort(key=lambda x: x.get("start_date", ""))
+            html += f"<h2 style='{tw("text-gray-300", "mt-30", "mb-10", "font-800")}'>📂 기타 업무</h2><ul>"
             for s in grouped[None]:
                 html += self.format_schedule(s)
             html += "</ul>"
@@ -99,6 +111,8 @@ class HandoverReportDialog(QDialog):
         return html
 
     def format_schedule(self, s):
+        is_dark = self.settings.get("dark_mode", True)
+
         title = s["title"]
 
         # 1. 시작일과 종료일 포맷팅 (같으면 하나만 출력)
@@ -174,7 +188,9 @@ class HandoverReportDialog(QDialog):
 
             full_rep_text = f"({label_base}{detail_label}{repeat_end})"
             # 폰트 크기를 약간 키우고 눈에 잘 띄는 오렌지색 유지
-            rep_str = f" <span style='color: #e67e22; font-size: 15px;'><b>{full_rep_text}</b></span>"
+            rep_str = (
+                f" <span style='color: #e67e22; font-weight:500'>{full_rep_text}</span>"
+            )
 
         # 3. 설명(메모) 박스 디자인 개선 및 폰트 크기 확대
         desc = s.get("description", "").strip()
@@ -182,18 +198,22 @@ class HandoverReportDialog(QDialog):
         if desc:
             desc = desc.replace("\n", "<br>")
             desc_html = f"""
-            <div style='margin-top: 8px; margin-bottom: 15px; padding: 12px; 
-                        background-color: #f8f9fa; border-left: 4px solid #ced4da; 
-                        color: #212529; font-size: 14.5px; line-height: 1.5;'>
-                {desc}
-            </div>
+            <table width='100%' cellpadding='0' cellspacing='0' style='margin-top: 8px; margin-bottom: 15px;'>
+                <tr>
+                    <td width='4' style='background-color: {COLORS["red-600"] if is_dark else '#ced4da;'}'></td>
+                    
+                    <td style='{tw(f"bg-{"c33" if is_dark else "white"}", "p-12")}'>
+                        {desc}
+                    </td>
+                </tr>
+            </table>
             """
 
         # 4. 제목 폰트 크기(16px) 및 날짜 폰트 크기 조절
         return f"""
-                <li style='margin-bottom: { '5px' if desc_html else '15px' }; line-height: 1.6;'>
-                    <span style='font-size: 16px;'><b>{title}</b></span>
-                    <span style='color: #6c757d; font-size: 14px;'> [{dates}]</span>{rep_str}{desc_html}
+                <li style='margin-bottom: { '5px' if desc_html else '10px' }; line-height: 1.2;'>
+                    <span><b>{title}</b></span>
+                    <span style='color: #6c757d;'> [{dates}]</span>{rep_str}{desc_html}
                 </li>
                 """
 
@@ -433,7 +453,7 @@ class RoadmapCanvas(QWidget):
 
             app: QApplication = QApplication.instance()
             app_font_size = app.font().pixelSize()
-            target_size = max(1, int(app_font_size * (13 / 14)))
+            target_size = max(1, int(app_font_size * (14 / BASIC_SIZE)))
 
             font = QFont("Pretendard Variable", target_size)
             fm = QFontMetrics(font)
@@ -563,23 +583,24 @@ class RoadmapTab(QWidget):
         top_layout.addWidget(TitleLabel("🗺️ 연간 업무 로드맵"))
 
         self.year_combo = QComboBox()
-        self.year_combo.setMinimumWidth(90)
+        self.year_combo.setMinimumWidth(100)
         self.update_year_combo()
         self.year_combo.currentTextChanged.connect(self.refresh_data)
 
-        self.group_mgr_btn = StyledButton("⚙️ 그룹 관리", COLORS["blue-500"])
+        self.group_mgr_btn = StyledButton("⚙️ 그룹 관리 ", COLORS["blue-500"])
         self.group_mgr_btn.clicked.connect(self.open_group_manager)
 
-        self.report_btn = StyledButton("📄 인수인계서 작성", COLORS["green-500"])
+        self.report_btn = StyledButton("📄 인수인계서 작성 ", COLORS["green-500"])
         self.report_btn.setToolTip("현재 연도의 로드맵을 문서 형태로 정리합니다.")
         self.report_btn.clicked.connect(self.generate_handover_report)
 
-        self.cleanup_btn = StyledButton("🧹 인수인계 정리", COLORS["red-600"])
+        self.cleanup_btn = StyledButton("🧹 인수인계 정리 ", COLORS["red-600"])
         self.cleanup_btn.setToolTip(
             "로드맵에 등록되지 않은 개인 일정을 모두 삭제합니다."
         )
         self.cleanup_btn.clicked.connect(self.cleanup_personal_schedules)
 
+        top_layout.addStretch()
         top_layout.addWidget(self.year_combo)
         top_layout.addStretch()
         top_layout.addWidget(self.group_mgr_btn)
@@ -655,16 +676,23 @@ class RoadmapTab(QWidget):
         dialog.exec()
 
     def cleanup_personal_schedules(self):
-        reply = QMessageBox.warning(
-            self,
-            "⚠️ 인수인계 정리 (개인 일정 삭제)",
-            "로드맵(★)에 등록되지 않은 모든 '개인 일정'을 영구적으로 삭제하시겠습니까?\n"
-            "이 작업은 되돌릴 수 없으며, 후임자에게 앱을 넘겨주기 직전에만 사용을 권장합니다.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("⚠️ 인수인계 정리 (개인 일정 삭제)")
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setText(
+            "로드맵(★)에 등록되지 않은 모든 '개인 일정'을 영구적으로 삭제하시겠습니까?\n\n"
+            "이 작업은 되돌릴 수 없으며, 후임자에게 앱을 넘겨주기 직전에만 사용을 권장합니다."
         )
+        btn_delete = msg_box.addButton(
+            "예, 모두 삭제합니다", QMessageBox.ButtonRole.YesRole
+        )
+        btn_cancel = msg_box.addButton(
+            "아니요, 취소합니다", QMessageBox.ButtonRole.NoRole
+        )
+        msg_box.setDefaultButton(btn_cancel)
+        msg_box.exec()
 
-        if reply == QMessageBox.StandardButton.Yes:
+        if msg_box.clickedButton() == btn_delete:
             db_manager.delete_non_roadmap_schedules()
             global_signals.schedule_updated.emit()
             QMessageBox.information(
